@@ -4,7 +4,9 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import com.example.waterrefillapijava.model.Setting;
 import com.example.waterrefillapijava.model.User;
+import com.example.waterrefillapijava.repository.SettingRepository;
 import com.example.waterrefillapijava.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DataSeeder implements CommandLineRunner {
 
 	private final UserRepository userRepository;
+	private final SettingRepository settingRepository;
 	private final PasswordEncoder passwordEncoder;
 
 	@Override
@@ -27,6 +30,19 @@ public class DataSeeder implements CommandLineRunner {
 				.build();
 			userRepository.save(admin);
 			log.info("Seeded default admin user (username: admin, password: password)");
+		}
+
+		if (settingRepository.findById(1L).isEmpty()) {
+			final Setting defaults = Setting.builder()
+				.id(1L)
+				.storeName("My Water Refilling Station")
+				.storeAddress("")
+				.storePhone("")
+				.currency("PHP")
+				.lowStockThreshold(10)
+				.build();
+			settingRepository.save(defaults);
+			log.info("Seeded default settings");
 		}
 	}
 }
