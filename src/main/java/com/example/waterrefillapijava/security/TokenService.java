@@ -11,7 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.example.waterrefillapijava.exception.ApiException;
+import com.example.waterrefillapijava.exception.AuthenticationException;
+import com.example.waterrefillapijava.exception.RateLimitedException;
 import com.example.waterrefillapijava.model.RefreshToken;
 import com.example.waterrefillapijava.model.User;
 import com.example.waterrefillapijava.repository.RefreshTokenRepository;
@@ -90,21 +91,21 @@ public class TokenService {
 		@NonNull final HttpServletRequest request
 	) {
 		if (!jwtUtil.validateToken(rawToken)) {
-			throw ApiException.unauthenticated("Invalid or expired refresh token");
+			throw new AuthenticationException("Invalid or expired refresh token");
 		}
 
 		final String tokenHash = hashToken(rawToken);
 		final RefreshToken stored = refreshTokenRepository.findByTokenHash(tokenHash)
-			.orElseThrow(() -> ApiException.unauthenticated("Refresh token not found"));
+			.orElseThrow(() -> new AuthenticationException("Refresh token not found"));
 
 		if (stored.isRevoked()) {
 			refreshTokenRepository.revokeActiveByTokenFamily(stored.getTokenFamily());
 			log.warn("Security Alert: Reuse of revoked refresh token detected for family={}", stored.getTokenFamily());
-			throw ApiException.unauthenticated("Refresh token has been revoked. All sessions invalidated.");
+			throw new AuthenticationException("Refresh token has been revoked. All sessions invalidated.");
 		}
 
 		if (stored.getExpiresAt().isBefore(Instant.now())) {
-			throw ApiException.unauthenticated("Refresh token has expired");
+			throw new AuthenticationException("Refresh token has expired");
 		}
 
 		final String clientIp = ClientFingerprintUtil.extractClientIp(request, trustProxy);
@@ -132,12 +133,12 @@ public class TokenService {
 	) {
 		if (slidingWindowRateLimiter.isRateLimited(clientIp, maxFingerprintMismatches, fingerprintWindowMs)) {
 			log.warn("Refresh rate limit exceeded for ip={}", clientIp);
-			throw ApiException.status(429, "Too many refresh attempts. Please try again later.");
+			throw new RateLimitedException("Too many refresh attempts. Please try again later.");
 		}
 		refreshTokenRepository.revokeActiveByTokenFamily(family);
 		log.warn("Security Alert: Refresh token binding mismatch - potential token theft. userId={}, family={}, ip={}",
 			userId, family, clientIp);
-		throw ApiException.unauthenticated("Security violation. Device binding mismatch. Please log in again.");
+		throw new AuthenticationException("Security violation. Device binding mismatch. Please log in again.");
 	}
 
 	@Transactional
