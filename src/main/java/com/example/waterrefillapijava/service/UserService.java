@@ -18,4 +18,12 @@ public class UserService {
 	public Optional<User> loadByUsername(final String username) {
 		return userRepository.findByUsername(username);
 	}
+
+	public User save(final User user) {
+		return userRepository.save(user);
+	}
+
+	public boolean existsByUsernameAndIdNot(final String username, final Long id) {
+		return userRepository.existsByUsernameAndIdNot(username, id);
+	}
 }
