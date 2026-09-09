@@ -47,6 +47,10 @@ public class JwtUtil {
 		return generateToken(username, rememberTokenExpirationMs, remember);
 	}
 
+	public String generateRefreshToken(@NonNull final String username, final long durationMs, final boolean remember) {
+		return generateToken(username, durationMs, remember);
+	}
+
 	private String generateToken(@NonNull final String username, final long expirationMs, final boolean remember) {
 		final Date now = new Date();
 		final Date expiryDate = new Date(now.getTime() + expirationMs);

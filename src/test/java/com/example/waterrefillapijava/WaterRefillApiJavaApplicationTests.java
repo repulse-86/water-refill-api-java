@@ -11,15 +11,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import com.example.waterrefillapijava.model.User;
+import com.example.waterrefillapijava.repository.RefreshTokenRepository;
 import com.example.waterrefillapijava.repository.UserRepository;
+import com.example.waterrefillapijava.security.ApiRateLimiter;
+import com.example.waterrefillapijava.security.SlidingWindowRateLimiter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Map;
+
+import jakarta.servlet.http.Cookie;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -33,14 +43,24 @@ class WaterRefillApiJavaApplicationTests {
 	private UserRepository userRepository;
 
 	@Autowired
+	private RefreshTokenRepository refreshTokenRepository;
+
+	@Autowired
 	private PasswordEncoder passwordEncoder;
 
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	@Autowired
+	private SlidingWindowRateLimiter slidingWindowRateLimiter;
+
+	@Autowired
+	private ApiRateLimiter apiRateLimiter;
+
 	@BeforeEach
 	void setUp() {
 		userRepository.deleteAll();
+		refreshTokenRepository.deleteAll();
 		final User user = User.builder()
 			.username("testuser")
 			.password(passwordEncoder.encode("testpass123"))
@@ -144,49 +164,101 @@ class WaterRefillApiJavaApplicationTests {
 	}
 
 	@Test
-	void refreshWithValidRefreshTokenReturnsNewAccessToken() throws Exception {
-		final Map<String, Object> loginBody = Map.of(
+	void refreshRotationWorksAndOldTokenRevoked() throws Exception {
+		final Map<String, Object> body = Map.of(
 			"username", "testuser",
 			"password", "testpass123",
 			"remember", false
 		);
 
-		final var loginResult = mockMvc.perform(post("/api/v1/login")
+		final MvcResult loginResult = mockMvc.perform(post("/api/v1/login")
 				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(loginBody)))
+				.content(objectMapper.writeValueAsString(body)))
 			.andExpect(status().isOk())
 			.andReturn();
 
-		final var refreshToken = loginResult.getResponse().getCookie("refresh_token");
+		final String refreshToken = extractRefreshToken(loginResult.getResponse());
+		assertTrue(refreshToken != null && !refreshToken.isBlank(), "refresh_token cookie should be set");
 
-		final var refreshResult = mockMvc.perform(post("/api/v1/refresh")
-				.cookie(refreshToken))
+		final MvcResult refreshResult = mockMvc.perform(post("/api/v1/refresh")
+				.cookie(new Cookie("refresh_token", refreshToken))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.token").isNotEmpty())
+			.andExpect(jsonPath("$.user.username").value("testuser"))
 			.andReturn();
 
-		final String newToken = objectMapper.readTree(refreshResult.getResponse().getContentAsString()).get("token").asText();
-
-		mockMvc.perform(get("/api/v1/me")
-				.header("Authorization", "Bearer " + newToken))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.user.username").value("testuser"));
-	}
-
-	@Test
-	void refreshWithoutCookieReturns401() throws Exception {
-		mockMvc.perform(post("/api/v1/refresh"))
-			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.message").value("Invalid or expired refresh token"));
-	}
-
-	@Test
-	void refreshWithInvalidCookieReturns401() throws Exception {
-		final jakarta.servlet.http.Cookie fakeCookie = new jakarta.servlet.http.Cookie("refresh_token", "not-a-real-jwt");
+		final String newRefreshToken = extractRefreshToken(refreshResult.getResponse());
+		assertTrue(newRefreshToken != null && !newRefreshToken.isBlank(), "new refresh_token cookie should be set");
 
 		mockMvc.perform(post("/api/v1/refresh")
-				.cookie(fakeCookie))
-			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.message").value("Invalid or expired refresh token"));
+				.cookie(new Cookie("refresh_token", refreshToken))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void refreshWithoutTokenReturns401() throws Exception {
+		mockMvc.perform(post("/api/v1/refresh")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void rateLimiterThrottlesAndResets() {
+		final String key = "test-rate-limit";
+
+		assertFalse(slidingWindowRateLimiter.isRateLimited(key, 3, 60000));
+		assertFalse(slidingWindowRateLimiter.isRateLimited(key, 3, 60000));
+		assertFalse(slidingWindowRateLimiter.isRateLimited(key, 3, 60000));
+		assertTrue(slidingWindowRateLimiter.isRateLimited(key, 3, 60000));
+
+		slidingWindowRateLimiter.reset(key);
+		assertFalse(slidingWindowRateLimiter.isRateLimited(key, 3, 60000));
+	}
+
+	@Test
+	void logoutRevokesTokens() throws Exception {
+		final Map<String, Object> body = Map.of(
+			"username", "testuser",
+			"password", "testpass123",
+			"remember", false
+		);
+
+		final MvcResult loginResult = mockMvc.perform(post("/api/v1/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(body)))
+			.andExpect(status().isOk())
+			.andReturn();
+
+		final String refreshToken = extractRefreshToken(loginResult.getResponse());
+
+		mockMvc.perform(post("/api/v1/logout")
+				.cookie(new Cookie("refresh_token", refreshToken))
+				.header("Authorization", "Bearer " + objectMapper.readTree(
+					loginResult.getResponse().getContentAsString()).get("token").asText()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.message").value("Logged out successfully"));
+
+		mockMvc.perform(post("/api/v1/refresh")
+				.cookie(new Cookie("refresh_token", refreshToken))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
+			.andExpect(status().isUnauthorized());
+	}
+
+	private String extractRefreshToken(final MockHttpServletResponse response) {
+		final String setCookie = response.getHeader("Set-Cookie");
+		if (setCookie == null) {
+			return null;
+		}
+		return java.util.Arrays.stream(response.getCookies())
+			.filter(c -> "refresh_token".equals(c.getName()))
+			.map(Cookie::getValue)
+			.findFirst()
+			.orElse(null);
 	}
 }

@@ -21,9 +21,14 @@ import com.example.waterrefillapijava.dto.ErrorResponse;
 import com.example.waterrefillapijava.dto.LoginRequest;
 import com.example.waterrefillapijava.dto.LoginResponse;
 import com.example.waterrefillapijava.dto.MessageResponse;
+import com.example.waterrefillapijava.dto.RefreshTokenRequest;
 import com.example.waterrefillapijava.model.User;
+import com.example.waterrefillapijava.security.ApiRateLimiter;
+import com.example.waterrefillapijava.security.ClientFingerprintUtil;
 import com.example.waterrefillapijava.security.CookieUtil;
 import com.example.waterrefillapijava.security.JwtUtil;
+import com.example.waterrefillapijava.security.TokenService;
+import com.example.waterrefillapijava.security.TokenService.TokenWithFamily;
 import com.example.waterrefillapijava.service.UserService;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,12 +47,17 @@ public class AuthController {
 	private final PasswordEncoder passwordEncoder;
 	private final JwtUtil jwtUtil;
 	private final CookieUtil cookieUtil;
+	private final TokenService tokenService;
+	private final ApiRateLimiter apiRateLimiter;
 
 	@Value("${app.jwt.access-expiration-ms:900000}")
 	private long accessTokenExpirationMs;
 
 	@Value("${app.jwt.remember-expiration-ms:604800000}")
 	private long rememberTokenExpirationMs;
+
+	@Value("${app.trust-proxy:false}")
+	private boolean trustProxy;
 
 	@PostMapping("/login")
 	@Transactional
@@ -56,6 +66,9 @@ public class AuthController {
 		final HttpServletRequest httpRequest,
 		final HttpServletResponse response
 	) {
+		final String clientIp = ClientFingerprintUtil.extractClientIp(httpRequest, trustProxy);
+		apiRateLimiter.checkLogin(clientIp, request.username());
+
 		final Optional<User> userOpt = userService.loadByUsername(request.username());
 
 		if (userOpt.isEmpty() || !passwordEncoder.matches(request.password(), userOpt.get().getPassword())) {
@@ -66,61 +79,90 @@ public class AuthController {
 		}
 
 		final User user = userOpt.get();
+		apiRateLimiter.resetLogin(clientIp, user.getUsername());
 
 		final String accessToken = jwtUtil.generateAccessToken(user.getUsername(), request.remember());
-		final String refreshToken = jwtUtil.generateRefreshToken(user.getUsername(), request.remember());
+		final TokenWithFamily refresh = tokenService.generateRefreshTokenWithFamily(user, request.remember(), httpRequest);
 
 		final long accessDurationMs = request.remember() ? rememberTokenExpirationMs : accessTokenExpirationMs;
-		final long refreshDurationMs = rememberTokenExpirationMs;
+		final long refreshDurationMs = refresh.expiresAt().toEpochMilli() - Instant.now().toEpochMilli();
 
-		cookieUtil.addTokenCookies(response, accessToken, refreshToken, accessDurationMs, refreshDurationMs, request.remember());
+		cookieUtil.addTokenCookies(response, accessToken, refresh.token(), accessDurationMs, refreshDurationMs, request.remember());
 
-		log.info("Login successful: userId={}, username={}", user.getId(), user.getUsername());
+		log.info("Login successful: userId={}, username={}, ip={}", user.getId(), user.getUsername(), clientIp);
 
 		final LoginResponse body = LoginResponse.of(accessToken, user.getId(), user.getUsername());
 
 		return ResponseEntity.ok(body);
 	}
 
+	@PostMapping("/refresh")
+	@Transactional
+	public ResponseEntity<?> refresh(
+		@CookieValue(name = "refresh_token", required = false) String refreshToken,
+		@RequestBody(required = false) final RefreshTokenRequest request,
+		final HttpServletRequest httpRequest,
+		final HttpServletResponse response
+	) {
+		final String clientIp = ClientFingerprintUtil.extractClientIp(httpRequest, trustProxy);
+		apiRateLimiter.checkRefresh(clientIp);
+
+		if (refreshToken == null && request != null) {
+			refreshToken = request.refreshToken();
+		}
+
+		if (refreshToken == null || refreshToken.isBlank()) {
+			return ResponseEntity.status(401).body(ErrorResponse.of("Missing refresh token"));
+		}
+
+		if (!jwtUtil.validateToken(refreshToken)) {
+			return ResponseEntity.status(401).body(ErrorResponse.of("Invalid refresh token"));
+		}
+
+		final String username = jwtUtil.extractSubject(refreshToken);
+		final Optional<User> userOpt = userService.loadByUsername(username);
+
+		if (userOpt.isEmpty()) {
+			return ResponseEntity.status(401).body(ErrorResponse.of("User not found"));
+		}
+
+		final User user = userOpt.get();
+		final TokenWithFamily rotated = tokenService.verifyAndRotateRefreshToken(refreshToken, user, httpRequest);
+
+		final String newAccessToken = jwtUtil.generateAccessToken(user.getUsername(), false);
+		final long refreshDurationMs = rotated.expiresAt().toEpochMilli() - Instant.now().toEpochMilli();
+
+		cookieUtil.addTokenCookies(response, newAccessToken, rotated.token(), accessTokenExpirationMs, refreshDurationMs,
+			jwtUtil.isRememberToken(refreshToken));
+
+		log.info("Token refreshed: userId={}", user.getId());
+
+		final LoginResponse body = LoginResponse.of(newAccessToken, user.getId(), user.getUsername());
+
+		return ResponseEntity.ok(body);
+	}
+
 	@PostMapping("/logout")
 	@Transactional
-	public ResponseEntity<?> logout(final HttpServletResponse response) {
+	public ResponseEntity<?> logout(
+		@CookieValue(name = "refresh_token", required = false) final String refreshToken,
+		final HttpServletResponse response
+	) {
 		final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
 		if (auth != null && auth.getPrincipal() instanceof User user) {
+			tokenService.revokeAllUserTokens(user.getId());
 			log.info("Logout: userId={}, username={}", user.getId(), user.getUsername());
+		}
+
+		if (refreshToken != null && !refreshToken.isBlank()) {
+			tokenService.revokeTokenFamilyByRawToken(refreshToken);
 		}
 
 		SecurityContextHolder.clearContext();
 		cookieUtil.clearTokenCookies(response);
 
 		return ResponseEntity.ok(new MessageResponse("Logged out successfully"));
-	}
-
-	@PostMapping("/refresh")
-	public ResponseEntity<?> refresh(
-		final HttpServletRequest httpRequest,
-		final HttpServletResponse response
-	) {
-		final String refreshToken = cookieUtil.extractCookie(httpRequest, "refresh_token").orElse(null);
-
-		if (refreshToken == null || refreshToken.isBlank() || !jwtUtil.validateToken(refreshToken)) {
-			return ResponseEntity.status(401).body(
-				ErrorResponse.of("Invalid or expired refresh token")
-			);
-		}
-
-		final String username = jwtUtil.extractSubject(refreshToken);
-		final boolean remember = jwtUtil.isRememberToken(refreshToken);
-
-		final String newAccessToken = jwtUtil.generateAccessToken(username, remember);
-		final String newRefreshToken = jwtUtil.generateRefreshToken(username, remember);
-
-		final long accessDurationMs = remember ? rememberTokenExpirationMs : accessTokenExpirationMs;
-
-		cookieUtil.addTokenCookies(response, newAccessToken, newRefreshToken, accessDurationMs, rememberTokenExpirationMs, remember);
-		log.info("Token refreshed: username={}", username);
-
-		return ResponseEntity.ok(Map.of("token", newAccessToken));
 	}
 
 	@GetMapping("/me")
