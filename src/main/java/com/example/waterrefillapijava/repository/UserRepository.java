@@ -11,4 +11,6 @@ import com.example.waterrefillapijava.model.User;
 public interface UserRepository extends JpaRepository<User, Long> {
 
 	Optional<User> findByUsername(String username);
+
+	boolean existsByUsernameAndIdNot(String username, Long id);
 }

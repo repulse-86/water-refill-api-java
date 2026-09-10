@@ -2,6 +2,7 @@ package com.example.waterrefillapijava;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -108,6 +109,7 @@ class WaterRefillApiJavaApplicationTests {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(objectMapper.writeValueAsString(body)))
 			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
 			.andExpect(jsonPath("$.message").value("Your credentials do not exist in our records."));
 	}
 
@@ -129,7 +131,7 @@ class WaterRefillApiJavaApplicationTests {
 	void unauthenticatedAccessToProtectedEndpointReturns401() throws Exception {
 		mockMvc.perform(get("/api/v1/me"))
 			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.error").value("Unauthenticated"));
+			.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 	}
 
 	@Test
@@ -156,11 +158,13 @@ class WaterRefillApiJavaApplicationTests {
 	}
 
 	@Test
-	void loginWithMissingFieldsReturns400() throws Exception {
+	void loginWithMissingFieldsReturns422() throws Exception {
 		mockMvc.perform(post("/api/v1/login")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{}"))
-			.andExpect(status().isBadRequest());
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+			.andExpect(jsonPath("$.errors").isMap());
 	}
 
 	@Test
@@ -248,6 +252,93 @@ class WaterRefillApiJavaApplicationTests {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{}"))
 			.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void updateProfileReturnsUpdatedUsername() throws Exception {
+		final String token = loginAsTestUser();
+
+		mockMvc.perform(put("/api/v1/user/profile-information")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of("username", "newname"))))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.user.username").value("newname"));
+	}
+
+	@Test
+	void updateProfileWithDuplicateUsernameReturns422() throws Exception {
+		userRepository.save(User.builder().username("taken").password("x").build());
+		final String token = loginAsTestUser();
+
+		mockMvc.perform(put("/api/v1/user/profile-information")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of("username", "taken"))))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.errors.username").isArray());
+	}
+
+	@Test
+	void updatePasswordWithWrongCurrentPasswordReturns422() throws Exception {
+		final String token = loginAsTestUser();
+
+		mockMvc.perform(put("/api/v1/user/password")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"currentPassword", "wrongpassword",
+					"password", "newpass123",
+					"passwordConfirmation", "newpass123"
+				))))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.errors.current_password").isArray());
+	}
+
+	@Test
+	void updatePasswordWithMismatchedConfirmationReturns422() throws Exception {
+		final String token = loginAsTestUser();
+
+		mockMvc.perform(put("/api/v1/user/password")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"currentPassword", "testpass123",
+					"password", "newpass123",
+					"passwordConfirmation", "differentpass"
+				))))
+			.andExpect(status().isUnprocessableEntity())
+			.andExpect(jsonPath("$.errors.password").isArray());
+	}
+
+	@Test
+	void updatePasswordSuccess() throws Exception {
+		final String token = loginAsTestUser();
+
+		mockMvc.perform(put("/api/v1/user/password")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"currentPassword", "testpass123",
+					"password", "newpass123",
+					"passwordConfirmation", "newpass123"
+				))))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.message").value("Password updated successfully."));
+	}
+
+	private String loginAsTestUser() throws Exception {
+		final MvcResult result = mockMvc.perform(post("/api/v1/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"username", "testuser",
+					"password", "testpass123",
+					"remember", false
+				))))
+			.andExpect(status().isOk())
+			.andReturn();
+
+		return objectMapper.readTree(result.getResponse().getContentAsString()).get("token").asText();
 	}
 
 	private String extractRefreshToken(final MockHttpServletResponse response) {

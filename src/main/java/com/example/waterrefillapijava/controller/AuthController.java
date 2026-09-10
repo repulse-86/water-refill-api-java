@@ -13,15 +13,20 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.example.waterrefillapijava.dto.ErrorResponse;
 import com.example.waterrefillapijava.dto.LoginRequest;
 import com.example.waterrefillapijava.dto.LoginResponse;
 import com.example.waterrefillapijava.dto.MessageResponse;
 import com.example.waterrefillapijava.dto.RefreshTokenRequest;
+import com.example.waterrefillapijava.dto.UpdatePasswordRequest;
+import com.example.waterrefillapijava.dto.UpdateProfileRequest;
+import com.example.waterrefillapijava.exception.AuthenticationException;
+import com.example.waterrefillapijava.exception.ConflictException;
+import com.example.waterrefillapijava.exception.FieldValidationException;
 import com.example.waterrefillapijava.model.User;
 import com.example.waterrefillapijava.security.ApiRateLimiter;
 import com.example.waterrefillapijava.security.ClientFingerprintUtil;
@@ -73,9 +78,7 @@ public class AuthController {
 
 		if (userOpt.isEmpty() || !passwordEncoder.matches(request.password(), userOpt.get().getPassword())) {
 			log.warn("Login failed: username={}", request.username());
-			return ResponseEntity.status(401).body(
-				ErrorResponse.of("Your credentials do not exist in our records.")
-			);
+			throw new AuthenticationException("Your credentials do not exist in our records.");
 		}
 
 		final User user = userOpt.get();
@@ -112,18 +115,18 @@ public class AuthController {
 		}
 
 		if (refreshToken == null || refreshToken.isBlank()) {
-			return ResponseEntity.status(401).body(ErrorResponse.of("Missing refresh token"));
+			throw new AuthenticationException("Missing refresh token");
 		}
 
 		if (!jwtUtil.validateToken(refreshToken)) {
-			return ResponseEntity.status(401).body(ErrorResponse.of("Invalid refresh token"));
+			throw new AuthenticationException("Invalid refresh token");
 		}
 
 		final String username = jwtUtil.extractSubject(refreshToken);
 		final Optional<User> userOpt = userService.loadByUsername(username);
 
 		if (userOpt.isEmpty()) {
-			return ResponseEntity.status(401).body(ErrorResponse.of("User not found"));
+			throw new AuthenticationException("User not found");
 		}
 
 		final User user = userOpt.get();
@@ -169,7 +172,7 @@ public class AuthController {
 	public ResponseEntity<?> me() {
 		final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 		if (auth == null || !(auth.getPrincipal() instanceof User user)) {
-			return ResponseEntity.status(401).body(ErrorResponse.of("Not authenticated"));
+			throw new AuthenticationException("Not authenticated");
 		}
 
 		final LoginResponse body = new LoginResponse(
@@ -178,6 +181,66 @@ public class AuthController {
 		);
 
 		return ResponseEntity.ok(body);
+	}
+
+	@PutMapping("/user/profile-information")
+	@Transactional
+	public ResponseEntity<?> updateProfile(@Valid @RequestBody final UpdateProfileRequest request) {
+		final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		if (auth == null || !(auth.getPrincipal() instanceof User user)) {
+			throw new AuthenticationException("Not authenticated");
+		}
+
+		if (!user.getUsername().equalsIgnoreCase(request.username()) && userService.existsByUsernameAndIdNot(request.username(), user.getId())) {
+			throw FieldValidationException.builder()
+				.add("username", "The username has already been taken.")
+				.build();
+		}
+
+		user.setUsername(request.username());
+		userService.save(user);
+
+		log.info("Profile updated: userId={}, username={}", user.getId(), user.getUsername());
+
+		final LoginResponse body = new LoginResponse(
+			null,
+			Map.of("id", user.getId(), "username", user.getUsername())
+		);
+
+		return ResponseEntity.ok(Map.of("user", body.user()));
+	}
+
+	@PutMapping("/user/password")
+	@Transactional
+	public ResponseEntity<?> updatePassword(@Valid @RequestBody final UpdatePasswordRequest request) {
+		final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		if (auth == null || !(auth.getPrincipal() instanceof User user)) {
+			throw new AuthenticationException("Not authenticated");
+		}
+
+		FieldValidationException.Builder validator = FieldValidationException.builder();
+		boolean hasErrors = false;
+
+		if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+			validator.add("current_password", "The provided current password is incorrect.");
+			hasErrors = true;
+		}
+
+		if (!request.password().equals(request.passwordConfirmation())) {
+			validator.add("password", "Password confirmation does not match.");
+			hasErrors = true;
+		}
+
+		if (hasErrors) {
+			throw validator.build();
+		}
+
+		user.setPassword(passwordEncoder.encode(request.password()));
+		userService.save(user);
+
+		log.info("Password updated: userId={}", user.getId());
+
+		return ResponseEntity.ok(new MessageResponse("Password updated successfully."));
 	}
 
 	@GetMapping("/ping")
