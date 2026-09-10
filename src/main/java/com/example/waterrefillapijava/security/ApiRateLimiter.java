@@ -3,7 +3,7 @@ package com.example.waterrefillapijava.security;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import com.example.waterrefillapijava.exception.ApiException;
+import com.example.waterrefillapijava.exception.RateLimitedException;
 
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -43,7 +43,7 @@ public class ApiRateLimiter {
 	private void check(@NonNull final String key, final int maxAttempts, final long windowMs) {
 		if (slidingWindowRateLimiter.isRateLimited(key, maxAttempts, windowMs)) {
 			log.warn("Rate limit exceeded: key={}", key);
-			throw ApiException.status(429, "Too many requests. Please try again later.");
+			throw new RateLimitedException("Too many requests. Please try again later.");
 		}
 	}
 }

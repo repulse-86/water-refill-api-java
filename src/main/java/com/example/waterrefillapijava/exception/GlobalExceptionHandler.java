@@ -1,56 +1,92 @@
 package com.example.waterrefillapijava.exception;
 
-import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.stream.Collectors;
+import com.example.waterrefillapijava.dto.ErrorResponse;
+import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import lombok.extern.slf4j.Slf4j;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 
-	@ExceptionHandler(ApiException.class)
-	public ResponseEntity<?> handleApiException(final ApiException ex) {
-		log.debug("ApiException: status={}, message={}", ex.getStatus(), ex.getMessage());
-		return ResponseEntity.status(ex.getStatus())
-			.body(Map.of(
-				"message", ex.getMessage(),
-				"timestamp", Instant.now().toString()
-			));
+	@ExceptionHandler(MethodArgumentNotValidException.class)
+	public ResponseEntity<ErrorResponse> handleValidation(final MethodArgumentNotValidException e, final HttpServletRequest request) {
+		final Map<String, List<String>> fieldErrors = new HashMap<>();
+		for (org.springframework.validation.FieldError fieldError : e.getBindingResult().getFieldErrors()) {
+			fieldErrors.computeIfAbsent(fieldError.getField(), k -> new ArrayList<>()).add(fieldError.getDefaultMessage());
+		}
+		final String message = fieldErrors.values().stream()
+			.findFirst()
+			.flatMap(list -> list.stream().findFirst())
+			.orElse("Validation failed");
+
+		return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+			.body(ErrorResponse.withErrors(HttpStatus.UNPROCESSABLE_ENTITY.value(), "VALIDATION_FAILED", message, pathOf(request), fieldErrors));
 	}
 
-	@ExceptionHandler(MethodArgumentNotValidException.class)
-	public ResponseEntity<?> handleValidation(final MethodArgumentNotValidException ex) {
-		final Map<String, String> errors = ex.getBindingResult().getFieldErrors().stream()
-			.collect(Collectors.toMap(
-				field -> field.getField(),
-				field -> field.getDefaultMessage() != null ? field.getDefaultMessage() : "Invalid value",
-				(a, b) -> a,
-				LinkedHashMap::new
-			));
+	@ExceptionHandler(FieldValidationException.class)
+	public ResponseEntity<ErrorResponse> handleFieldValidation(final FieldValidationException e, final HttpServletRequest request) {
+		final String message = e.getErrors().values().stream()
+			.findFirst()
+			.flatMap(list -> list.stream().findFirst())
+			.orElse("Validation failed");
 
-		return ResponseEntity.status(400)
-			.body(Map.of(
-				"message", "Validation failed",
-				"errors", errors,
-				"timestamp", Instant.now().toString()
-			));
+		return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+			.body(ErrorResponse.withErrors(HttpStatus.UNPROCESSABLE_ENTITY.value(), "VALIDATION_FAILED", message, pathOf(request), e.getErrors()));
+	}
+
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<ErrorResponse> handleUnreadable(final HttpMessageNotReadableException e, final HttpServletRequest request) {
+		return ResponseEntity.badRequest()
+			.body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "MALFORMED_REQUEST", "Malformed request body", pathOf(request)));
+	}
+
+	@ExceptionHandler(BusinessException.class)
+	public ResponseEntity<ErrorResponse> handleBusiness(final BusinessException e, final HttpServletRequest request) {
+		final HttpStatus status = switch (e.getCode()) {
+			case "NOT_FOUND" -> HttpStatus.NOT_FOUND;
+			case "CONFLICT" -> HttpStatus.CONFLICT;
+			case "UNAUTHENTICATED" -> HttpStatus.UNAUTHORIZED;
+			case "FORBIDDEN" -> HttpStatus.FORBIDDEN;
+			case "RATE_LIMITED" -> HttpStatus.TOO_MANY_REQUESTS;
+			default -> {
+				log.warn("Unmapped BusinessException code '{}' defaulting to 400", e.getCode());
+				yield HttpStatus.BAD_REQUEST;
+			}
+		};
+		return ResponseEntity.status(status)
+			.body(ErrorResponse.of(status.value(), e.getCode(), e.getMessage(), pathOf(request)));
+	}
+
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<ErrorResponse> handleDataIntegrity(final DataIntegrityViolationException e, final HttpServletRequest request) {
+		log.error("Data integrity violation", e);
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+			.body(ErrorResponse.of(HttpStatus.CONFLICT.value(), "CONFLICT", "Operation conflicts with existing data", pathOf(request)));
 	}
 
 	@ExceptionHandler(Exception.class)
-	public ResponseEntity<?> handleGeneric(final Exception ex) {
-		log.error("Unhandled exception", ex);
-		return ResponseEntity.status(500)
-			.body(Map.of(
-				"message", "An internal error occurred",
-				"timestamp", Instant.now().toString()
-			));
+	public ResponseEntity<ErrorResponse> handleGeneric(final Exception e, final HttpServletRequest request) {
+		log.error("Unhandled exception", e);
+		return ResponseEntity.internalServerError()
+			.body(ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR.value(), "INTERNAL_ERROR", "An unexpected error occurred", pathOf(request)));
+	}
+
+	private String pathOf(final HttpServletRequest request) {
+		return request != null ? request.getRequestURI() : null;
 	}
 }

@@ -29,7 +29,8 @@ public class JsonHttp401EntryPoint implements AuthenticationEntryPoint {
 		final AuthenticationException authException
 	) throws IOException {
 		final Map<String, Object> body = new HashMap<>();
-		body.put("error", "Unauthenticated");
+		body.put("code", "UNAUTHENTICATED");
+		body.put("message", "Unauthenticated");
 		body.put("timestamp", Instant.now().toString());
 
 		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
