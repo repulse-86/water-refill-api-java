@@ -1,0 +1,118 @@
+package com.example.waterrefillapijava.controller;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.example.waterrefillapijava.dto.MessageResponse;
+import com.example.waterrefillapijava.dto.PageResponse;
+import com.example.waterrefillapijava.dto.ProductRequest;
+import com.example.waterrefillapijava.dto.ProductResponse;
+import com.example.waterrefillapijava.dto.ProductUpdateRequest;
+import com.example.waterrefillapijava.model.Product;
+import com.example.waterrefillapijava.model.ProductType;
+import com.example.waterrefillapijava.service.ProductService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@RestController
+@RequestMapping("/api/v1/products")
+@RequiredArgsConstructor
+@Slf4j
+public class ProductController {
+
+	private final ProductService productService;
+
+	@GetMapping
+	public ResponseEntity<PageResponse<ProductResponse>> list(
+		@RequestParam(defaultValue = "1") int page,
+		@RequestParam(defaultValue = "10") int size,
+		@RequestParam(required = false) String search,
+		@RequestParam(required = false) ProductType type
+	) {
+		final Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.max(1, Math.min(100, size)),
+			Sort.by("name").ascending());
+
+		final Page<Product> products = productService.search(search, type, pageable);
+
+		return ResponseEntity.ok(toPageResponse(products));
+	}
+
+	@GetMapping("/{id}")
+	public ResponseEntity<ProductResponse> get(@PathVariable final Long id) {
+		final Product product = productService.findById(id);
+		return ResponseEntity.ok(toProductResponse(product));
+	}
+
+	@PostMapping
+	public ResponseEntity<ProductResponse> create(@Valid @RequestBody final ProductRequest request) {
+		final Product product = productService.create(
+			request.name(), request.type(), request.volumeGallons(),
+			request.price(), request.stockQuantity(), request.reorderPoint(), request.image()
+		);
+
+		log.info("Product created: id={}, name={}", product.getId(), product.getName());
+
+		return ResponseEntity.ok(toProductResponse(product));
+	}
+
+	@PutMapping("/{id}")
+	public ResponseEntity<ProductResponse> update(
+		@PathVariable final Long id,
+		@Valid @RequestBody final ProductUpdateRequest request
+	) {
+		final Product product = productService.update(
+			id, request.name(), request.type(), request.volumeGallons(),
+			request.price(), request.stockQuantity(), request.reorderPoint(), request.image()
+		);
+
+		log.info("Product updated: id={}, name={}", product.getId(), product.getName());
+
+		return ResponseEntity.ok(toProductResponse(product));
+	}
+
+	@DeleteMapping("/{id}")
+	public ResponseEntity<?> delete(@PathVariable final Long id) {
+		productService.delete(id);
+
+		log.info("Product deleted: id={}", id);
+
+		return ResponseEntity.ok(new MessageResponse("Product deleted successfully."));
+	}
+
+	private PageResponse<ProductResponse> toPageResponse(final Page<Product> page) {
+		return new PageResponse<>(
+			page.getContent().stream().map(this::toProductResponse).toList(),
+			page.getNumber() + 1,
+			page.getSize(),
+			page.getTotalElements(),
+			page.getTotalPages()
+		);
+	}
+
+	private ProductResponse toProductResponse(final Product product) {
+		return new ProductResponse(
+			product.getId(),
+			product.getName(),
+			product.getType(),
+			product.getVolumeGallons(),
+			product.getPrice(),
+			product.getStockQuantity(),
+			product.getReorderPoint(),
+			product.getImage()
+		);
+	}
+}
