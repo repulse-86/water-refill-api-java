@@ -1,10 +1,12 @@
 package com.example.waterrefillapijava.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import com.example.waterrefillapijava.model.ProductType;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -35,6 +37,9 @@ public record ProductUpdateRequest(
 	@JsonProperty("reorder_point")
 	Integer reorderPoint,
 
-	String image
+	String image,
+
+	@Valid
+	List<ComponentItem> components
 ) {
 }
