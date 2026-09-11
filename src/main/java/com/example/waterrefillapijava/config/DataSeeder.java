@@ -7,6 +7,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import com.example.waterrefillapijava.model.Customer;
+import com.example.waterrefillapijava.model.MeterReading;
 import com.example.waterrefillapijava.model.Order;
 import com.example.waterrefillapijava.model.OrderItem;
 import com.example.waterrefillapijava.model.OrderStatus;
@@ -18,6 +19,7 @@ import com.example.waterrefillapijava.model.ProductType;
 import com.example.waterrefillapijava.model.Setting;
 import com.example.waterrefillapijava.model.User;
 import com.example.waterrefillapijava.repository.CustomerRepository;
+import com.example.waterrefillapijava.repository.MeterReadingRepository;
 import com.example.waterrefillapijava.repository.OrderItemRepository;
 import com.example.waterrefillapijava.repository.OrderRepository;
 import com.example.waterrefillapijava.repository.ProductComponentRepository;
@@ -40,6 +42,7 @@ public class DataSeeder implements CommandLineRunner {
 	private final ProductComponentRepository productComponentRepository;
 	private final OrderRepository orderRepository;
 	private final OrderItemRepository orderItemRepository;
+	private final MeterReadingRepository meterReadingRepository;
 	private final PasswordEncoder passwordEncoder;
 
 	@Override
@@ -159,6 +162,34 @@ public class DataSeeder implements CommandLineRunner {
 			}
 
 			log.info("Seeded 2 default orders");
+		}
+
+		if (meterReadingRepository.count() == 0) {
+			meterReadingRepository.save(MeterReading.builder()
+				.readingDate(java.time.LocalDate.now().minusDays(5))
+				.meterValue(new BigDecimal("0"))
+				.notes("Start of week").build());
+			meterReadingRepository.save(MeterReading.builder()
+				.readingDate(java.time.LocalDate.now().minusDays(4))
+				.meterValue(new BigDecimal("15"))
+				.notes(null).build());
+			meterReadingRepository.save(MeterReading.builder()
+				.readingDate(java.time.LocalDate.now().minusDays(3))
+				.meterValue(new BigDecimal("25"))
+				.notes(null).build());
+			meterReadingRepository.save(MeterReading.builder()
+				.readingDate(java.time.LocalDate.now().minusDays(2))
+				.meterValue(new BigDecimal("35"))
+				.notes(null).build());
+			meterReadingRepository.save(MeterReading.builder()
+				.readingDate(java.time.LocalDate.now().minusDays(1))
+				.meterValue(new BigDecimal("45"))
+				.notes("End of previous day").build());
+			meterReadingRepository.save(MeterReading.builder()
+				.readingDate(java.time.LocalDate.now())
+				.meterValue(new BigDecimal("54"))
+				.notes("End of shift").build());
+			log.info("Seeded 6 default meter readings");
 		}
 	}
 }
