@@ -17,11 +17,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.waterrefillapijava.dto.MessageResponse;
 import com.example.waterrefillapijava.dto.PageResponse;
+import com.example.waterrefillapijava.dto.ProductComponentRequest;
+import com.example.waterrefillapijava.dto.ProductComponentResponse;
 import com.example.waterrefillapijava.dto.ProductRequest;
 import com.example.waterrefillapijava.dto.ProductResponse;
 import com.example.waterrefillapijava.dto.ProductUpdateRequest;
 import com.example.waterrefillapijava.model.Product;
 import com.example.waterrefillapijava.model.ProductType;
+import com.example.waterrefillapijava.service.ProductComponentService;
 import com.example.waterrefillapijava.service.ProductService;
 
 import jakarta.validation.Valid;
@@ -35,6 +38,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ProductController {
 
 	private final ProductService productService;
+	private final ProductComponentService productComponentService;
 
 	@GetMapping
 	public ResponseEntity<PageResponse<ProductResponse>> list(
@@ -61,7 +65,8 @@ public class ProductController {
 	public ResponseEntity<ProductResponse> create(@Valid @RequestBody final ProductRequest request) {
 		final Product product = productService.create(
 			request.name(), request.type(), request.volumeGallons(),
-			request.price(), request.stockQuantity(), request.reorderPoint(), request.image()
+			request.price(), request.stockQuantity(), request.reorderPoint(), request.image(),
+			request.components()
 		);
 
 		log.info("Product created: id={}, name={}", product.getId(), product.getName());
@@ -76,7 +81,8 @@ public class ProductController {
 	) {
 		final Product product = productService.update(
 			id, request.name(), request.type(), request.volumeGallons(),
-			request.price(), request.stockQuantity(), request.reorderPoint(), request.image()
+			request.price(), request.stockQuantity(), request.reorderPoint(), request.image(),
+			request.components()
 		);
 
 		log.info("Product updated: id={}, name={}", product.getId(), product.getName());
@@ -93,9 +99,75 @@ public class ProductController {
 		return ResponseEntity.ok(new MessageResponse("Product deleted successfully."));
 	}
 
+	@GetMapping("/{productId}/components")
+	public ResponseEntity<PageResponse<ProductComponentResponse>> listComponents(
+		@PathVariable final Long productId,
+		@RequestParam(defaultValue = "1") int page,
+		@RequestParam(defaultValue = "10") int size,
+		@RequestParam(required = false) String search
+	) {
+		final Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.max(1, Math.min(100, size)),
+			Sort.by("id").ascending());
+
+		final Page<ProductComponentResponse> components = productComponentService.list(productId, search, pageable);
+
+		return ResponseEntity.ok(toComponentPageResponse(components));
+	}
+
+	@PostMapping("/{productId}/components")
+	public ResponseEntity<ProductComponentResponse> addComponent(
+		@PathVariable final Long productId,
+		@Valid @RequestBody final ProductComponentRequest request
+	) {
+		final ProductComponentResponse component = productComponentService.add(
+			productId, request.componentId(), request.quantity()
+		);
+
+		log.info("Component added: productId={}, componentId={}, quantity={}", productId, request.componentId(), request.quantity());
+
+		return ResponseEntity.ok(component);
+	}
+
+	@PutMapping("/{productId}/components/{componentId}")
+	public ResponseEntity<ProductComponentResponse> updateComponent(
+		@PathVariable final Long productId,
+		@PathVariable final Long componentId,
+		@Valid @RequestBody final ProductComponentRequest request
+	) {
+		final ProductComponentResponse component = productComponentService.updateQuantity(
+			productId, componentId, request.quantity()
+		);
+
+		log.info("Component updated: productId={}, componentId={}, quantity={}", productId, componentId, request.quantity());
+
+		return ResponseEntity.ok(component);
+	}
+
+	@DeleteMapping("/{productId}/components/{componentId}")
+	public ResponseEntity<?> deleteComponent(
+		@PathVariable final Long productId,
+		@PathVariable final Long componentId
+	) {
+		productComponentService.delete(productId, componentId);
+
+		log.info("Component deleted: productId={}, componentId={}", productId, componentId);
+
+		return ResponseEntity.ok(new MessageResponse("Product component deleted successfully."));
+	}
+
 	private PageResponse<ProductResponse> toPageResponse(final Page<Product> page) {
 		return new PageResponse<>(
 			page.getContent().stream().map(this::toProductResponse).toList(),
+			page.getNumber() + 1,
+			page.getSize(),
+			page.getTotalElements(),
+			page.getTotalPages()
+		);
+	}
+
+	private PageResponse<ProductComponentResponse> toComponentPageResponse(final Page<ProductComponentResponse> page) {
+		return new PageResponse<>(
+			page.getContent(),
 			page.getNumber() + 1,
 			page.getSize(),
 			page.getTotalElements(),

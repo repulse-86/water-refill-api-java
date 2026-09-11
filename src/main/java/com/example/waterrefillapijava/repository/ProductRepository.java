@@ -1,5 +1,7 @@
 package com.example.waterrefillapijava.repository;
 
+import java.util.Optional;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +16,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 	boolean existsByNameIgnoreCase(String name);
 
 	boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+
+	Optional<Product> findByNameIgnoreCase(String name);
 
 	Page<Product> findByNameContainingIgnoreCase(String name, Pageable pageable);
 

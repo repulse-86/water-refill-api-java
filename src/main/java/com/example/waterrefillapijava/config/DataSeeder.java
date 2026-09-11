@@ -8,10 +8,12 @@ import org.springframework.stereotype.Component;
 
 import com.example.waterrefillapijava.model.Customer;
 import com.example.waterrefillapijava.model.Product;
+import com.example.waterrefillapijava.model.ProductComponent;
 import com.example.waterrefillapijava.model.ProductType;
 import com.example.waterrefillapijava.model.Setting;
 import com.example.waterrefillapijava.model.User;
 import com.example.waterrefillapijava.repository.CustomerRepository;
+import com.example.waterrefillapijava.repository.ProductComponentRepository;
 import com.example.waterrefillapijava.repository.ProductRepository;
 import com.example.waterrefillapijava.repository.SettingRepository;
 import com.example.waterrefillapijava.repository.UserRepository;
@@ -28,6 +30,7 @@ public class DataSeeder implements CommandLineRunner {
 	private final SettingRepository settingRepository;
 	private final CustomerRepository customerRepository;
 	private final ProductRepository productRepository;
+	private final ProductComponentRepository productComponentRepository;
 	private final PasswordEncoder passwordEncoder;
 
 	@Override
@@ -93,6 +96,27 @@ public class DataSeeder implements CommandLineRunner {
 				.price(new BigDecimal("500"))
 				.stockQuantity(0).reorderPoint(1).build());
 			log.info("Seeded 6 default products");
+		}
+
+		if (productComponentRepository.count() == 0) {
+			final Product purifiedWater = productRepository.findByNameIgnoreCase("Purified Water").orElse(null);
+			final Product alkalineWater = productRepository.findByNameIgnoreCase("Alkaline Water").orElse(null);
+			final Product cap = productRepository.findByNameIgnoreCase("Cap").orElse(null);
+			final Product seal = productRepository.findByNameIgnoreCase("Seal").orElse(null);
+
+			if (purifiedWater != null && cap != null && seal != null) {
+				productComponentRepository.save(ProductComponent.builder()
+					.product(purifiedWater).component(cap).quantity(1).build());
+				productComponentRepository.save(ProductComponent.builder()
+					.product(purifiedWater).component(seal).quantity(1).build());
+			}
+			if (alkalineWater != null && cap != null && seal != null) {
+				productComponentRepository.save(ProductComponent.builder()
+					.product(alkalineWater).component(cap).quantity(1).build());
+				productComponentRepository.save(ProductComponent.builder()
+					.product(alkalineWater).component(seal).quantity(1).build());
+			}
+			log.info("Seeded 4 default product components (BOM)");
 		}
 	}
 }
