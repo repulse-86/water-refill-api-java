@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.example.waterrefillapijava.model.User;
 import com.example.waterrefillapijava.repository.CustomerRepository;
+import com.example.waterrefillapijava.repository.MeterReadingRepository;
 import com.example.waterrefillapijava.repository.OrderItemRepository;
 import com.example.waterrefillapijava.repository.OrderRepository;
 import com.example.waterrefillapijava.repository.ProductComponentRepository;
@@ -62,6 +63,9 @@ public abstract class AbstractIntegrationTest {
 	protected OrderItemRepository orderItemRepository;
 
 	@Autowired
+	protected MeterReadingRepository meterReadingRepository;
+
+	@Autowired
 	protected PasswordEncoder passwordEncoder;
 
 	@Autowired
@@ -71,6 +75,7 @@ public abstract class AbstractIntegrationTest {
 	void setUp() {
 		orderItemRepository.deleteAll();
 		orderRepository.deleteAll();
+		meterReadingRepository.deleteAll();
 		userRepository.deleteAll();
 		refreshTokenRepository.deleteAll();
 		customerRepository.deleteAll();
