@@ -1,0 +1,101 @@
+package com.example.waterrefillapijava;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+import com.example.waterrefillapijava.model.User;
+import com.example.waterrefillapijava.repository.CustomerRepository;
+import com.example.waterrefillapijava.repository.ProductComponentRepository;
+import com.example.waterrefillapijava.repository.ProductRepository;
+import com.example.waterrefillapijava.repository.RefreshTokenRepository;
+import com.example.waterrefillapijava.repository.SettingRepository;
+import com.example.waterrefillapijava.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.Map;
+
+import jakarta.servlet.http.Cookie;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+public abstract class AbstractIntegrationTest {
+
+	@Autowired
+	protected MockMvc mockMvc;
+
+	@Autowired
+	protected UserRepository userRepository;
+
+	@Autowired
+	protected RefreshTokenRepository refreshTokenRepository;
+
+	@Autowired
+	protected SettingRepository settingRepository;
+
+	@Autowired
+	protected CustomerRepository customerRepository;
+
+	@Autowired
+	protected ProductRepository productRepository;
+
+	@Autowired
+	protected ProductComponentRepository productComponentRepository;
+
+	@Autowired
+	protected PasswordEncoder passwordEncoder;
+
+	@Autowired
+	protected ObjectMapper objectMapper;
+
+	@BeforeEach
+	void setUp() {
+		userRepository.deleteAll();
+		refreshTokenRepository.deleteAll();
+		customerRepository.deleteAll();
+		productComponentRepository.deleteAll();
+		productRepository.deleteAll();
+		final User user = User.builder()
+			.username("testuser")
+			.password(passwordEncoder.encode("testpass123"))
+			.build();
+		userRepository.save(user);
+	}
+
+	protected String loginAsTestUser() throws Exception {
+		final MvcResult result = mockMvc.perform(post("/api/v1/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"username", "testuser",
+					"password", "testpass123",
+					"remember", false
+				))))
+			.andExpect(status().isOk())
+			.andReturn();
+
+		return objectMapper.readTree(result.getResponse().getContentAsString()).get("token").asText();
+	}
+
+	protected String extractRefreshToken(final MockHttpServletResponse response) {
+		final String setCookie = response.getHeader("Set-Cookie");
+		if (setCookie == null) {
+			return null;
+		}
+		return java.util.Arrays.stream(response.getCookies())
+			.filter(c -> "refresh_token".equals(c.getName()))
+			.map(Cookie::getValue)
+			.findFirst()
+			.orElse(null);
+	}
+}
