@@ -7,12 +7,19 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import com.example.waterrefillapijava.model.Customer;
+import com.example.waterrefillapijava.model.Order;
+import com.example.waterrefillapijava.model.OrderItem;
+import com.example.waterrefillapijava.model.OrderStatus;
+import com.example.waterrefillapijava.model.OrderType;
+import com.example.waterrefillapijava.model.PaymentMethod;
 import com.example.waterrefillapijava.model.Product;
 import com.example.waterrefillapijava.model.ProductComponent;
 import com.example.waterrefillapijava.model.ProductType;
 import com.example.waterrefillapijava.model.Setting;
 import com.example.waterrefillapijava.model.User;
 import com.example.waterrefillapijava.repository.CustomerRepository;
+import com.example.waterrefillapijava.repository.OrderItemRepository;
+import com.example.waterrefillapijava.repository.OrderRepository;
 import com.example.waterrefillapijava.repository.ProductComponentRepository;
 import com.example.waterrefillapijava.repository.ProductRepository;
 import com.example.waterrefillapijava.repository.SettingRepository;
@@ -31,6 +38,8 @@ public class DataSeeder implements CommandLineRunner {
 	private final CustomerRepository customerRepository;
 	private final ProductRepository productRepository;
 	private final ProductComponentRepository productComponentRepository;
+	private final OrderRepository orderRepository;
+	private final OrderItemRepository orderItemRepository;
 	private final PasswordEncoder passwordEncoder;
 
 	@Override
@@ -117,6 +126,39 @@ public class DataSeeder implements CommandLineRunner {
 					.product(alkalineWater).component(seal).quantity(1).build());
 			}
 			log.info("Seeded 4 default product components (BOM)");
+		}
+
+		if (orderRepository.count() == 0) {
+			final Customer juan = customerRepository.findByNameIgnoreCase("Juan Dela Cruz").orElse(null);
+			final Customer maria = customerRepository.findByNameIgnoreCase("Maria Santos").orElse(null);
+			final Product purifiedWater = productRepository.findByNameIgnoreCase("Purified Water").orElse(null);
+			final Product jug = productRepository.findByNameIgnoreCase("Water Jug 5 Gal").orElse(null);
+
+			if (juan != null && purifiedWater != null && jug != null) {
+				final Order order1 = orderRepository.save(Order.builder()
+					.customer(juan).orderType(OrderType.walk_in).status(OrderStatus.queued)
+					.paymentMethod(PaymentMethod.cash).totalAmount(new BigDecimal("300"))
+					.amountPaid(new BigDecimal("300")).deliveryFee(BigDecimal.ZERO).build());
+				orderItemRepository.save(OrderItem.builder()
+					.order(order1).product(purifiedWater).quantity(10)
+					.unitPrice(new BigDecimal("25")).subtotal(new BigDecimal("250")).build());
+				orderItemRepository.save(OrderItem.builder()
+					.order(order1).product(jug).quantity(1)
+					.unitPrice(new BigDecimal("50")).subtotal(new BigDecimal("50")).build());
+			}
+
+			if (maria != null && purifiedWater != null) {
+				final Order order2 = orderRepository.save(Order.builder()
+					.customer(maria).orderType(OrderType.delivery).status(OrderStatus.processing)
+					.paymentMethod(PaymentMethod.credit).totalAmount(new BigDecimal("125"))
+					.amountPaid(BigDecimal.ZERO).deliveryFee(new BigDecimal("20"))
+					.deliveryAddress("123 Water St").build());
+				orderItemRepository.save(OrderItem.builder()
+					.order(order2).product(purifiedWater).quantity(5)
+					.unitPrice(new BigDecimal("25")).subtotal(new BigDecimal("125")).build());
+			}
+
+			log.info("Seeded 2 default orders");
 		}
 	}
 }
