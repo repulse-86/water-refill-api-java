@@ -77,4 +77,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
 	@Query("SELECT COALESCE(SUM(o.bottlesReturnedAtDelivery), 0) FROM Order o")
 	Integer sumBottlesReturned();
+
+	@Query("SELECT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.status = :status ORDER BY o.createdAt DESC")
+	List<Order> findByStatusWithItems(@Param("status") OrderStatus status);
 }
