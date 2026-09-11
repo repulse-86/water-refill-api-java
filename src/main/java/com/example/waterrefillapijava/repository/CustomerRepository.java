@@ -23,4 +23,6 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 	Page<Customer> findByNameContainingIgnoreCase(String name, Pageable pageable);
 
 	Optional<Customer> findByNameIgnoreCase(String name);
+
+	long countBySubscriberStatus(String subscriberStatus);
 }

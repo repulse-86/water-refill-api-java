@@ -70,4 +70,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 		END, o.id DESC
 		""")
 	List<BoardOrderResponse> findAllForBoardGrouped(@Param("statuses") List<OrderStatus> statuses);
+
+	List<Order> findByStatusNotOrderByCreatedAtDesc(OrderStatus status);
+
+	long countByStatusNot(OrderStatus status);
+
+	@Query("SELECT COALESCE(SUM(o.bottlesReturnedAtDelivery), 0) FROM Order o")
+	Integer sumBottlesReturned();
 }
