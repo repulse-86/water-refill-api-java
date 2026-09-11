@@ -113,4 +113,15 @@ public abstract class AbstractIntegrationTest {
 			.findFirst()
 			.orElse(null);
 	}
+
+	protected String createProduct(final String token, final Map<String, Object> fields) throws Exception {
+		return mockMvc.perform(post("/api/v1/products")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(fields)))
+			.andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+	}
 }
