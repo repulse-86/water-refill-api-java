@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,6 +61,7 @@ public class ReportService {
 	}
 
 	@Transactional(readOnly = true)
+	@Cacheable(value = "report:daily-sales", key = "#page + ':' + #size + ':' + (#search == null ? '' : #search)")
 	public PageResponse<DailySalesRowResponse> getDailySales(int page, int size, String search) {
 		page = clampPage(page);
 		size = clampSize(size);
@@ -105,6 +107,7 @@ public class ReportService {
 	}
 
 	@Transactional(readOnly = true)
+	@Cacheable(value = "report:product-performance", key = "#page + ':' + #size + ':' + (#search == null ? '' : #search)")
 	public PageResponse<ProductPerformanceResponse> getProductPerformance(int page, int size, String search) {
 		page = clampPage(page);
 		size = clampSize(size);
@@ -155,6 +158,7 @@ public class ReportService {
 	}
 
 	@Transactional(readOnly = true)
+	@Cacheable(value = "report:debt-aging", key = "#page + ':' + #size + ':' + (#search == null ? '' : #search)")
 	public PageResponse<DebtAgingResponse> getDebtAging(int page, int size, String search) {
 		page = clampPage(page);
 		size = clampSize(size);
@@ -187,6 +191,7 @@ public class ReportService {
 	}
 
 	@Transactional(readOnly = true)
+	@Cacheable(value = "report:reconciliation", key = "#page + ':' + #size + ':' + (#search == null ? '' : #search)")
 	public PageResponse<ReconciliationResponse> getReconciliation(int page, int size, String search) {
 		page = clampPage(page);
 		size = clampSize(size);

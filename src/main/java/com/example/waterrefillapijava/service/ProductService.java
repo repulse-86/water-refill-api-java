@@ -3,6 +3,8 @@ package com.example.waterrefillapijava.service;
 import java.math.BigDecimal;
 import java.util.List;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -53,6 +55,10 @@ public class ProductService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:product-performance")
+	})
 	public Product create(String name, ProductType type, BigDecimal volumeGallons,
 			BigDecimal price, Integer stockQuantity, Integer reorderPoint, String image,
 			List<ComponentItem> components) {
@@ -88,6 +94,10 @@ public class ProductService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:product-performance")
+	})
 	public Product update(
 		Long id,
 		String name,
@@ -134,6 +144,10 @@ public class ProductService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:product-performance")
+	})
 	public void delete(Long id) {
 		if (!productRepository.existsById(id)) {
 			throw new NotFoundException("Product not found.");
