@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -112,6 +114,13 @@ public class OrderService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict(value = "report:daily-sales", allEntries = true),
+		@CacheEvict(value = "report:product-performance", allEntries = true),
+		@CacheEvict(value = "report:debt-aging", allEntries = true),
+		@CacheEvict(value = "report:reconciliation", allEntries = true)
+	})
 	public Order create(Long customerId, OrderType orderType, PaymentMethod paymentMethod,
 			BigDecimal totalAmount, BigDecimal amountPaid, BigDecimal deliveryFee,
 			String notes, String deliveryAddress, Integer bottlesReturned,
@@ -204,6 +213,13 @@ public class OrderService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict(value = "report:daily-sales", allEntries = true),
+		@CacheEvict(value = "report:product-performance", allEntries = true),
+		@CacheEvict(value = "report:debt-aging", allEntries = true),
+		@CacheEvict(value = "report:reconciliation", allEntries = true)
+	})
 	public Order update(Long id, Long customerId, OrderType orderType, OrderStatus status,
 			PaymentMethod paymentMethod, BigDecimal totalAmount, BigDecimal amountPaid,
 			BigDecimal deliveryFee, String notes, String deliveryAddress,
@@ -259,6 +275,13 @@ public class OrderService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict(value = "report:daily-sales", allEntries = true),
+		@CacheEvict(value = "report:product-performance", allEntries = true),
+		@CacheEvict(value = "report:debt-aging", allEntries = true),
+		@CacheEvict(value = "report:reconciliation", allEntries = true)
+	})
 	public void delete(Long id) {
 		if (!orderRepository.existsById(id)) {
 			throw new NotFoundException("Order not found.");
@@ -272,6 +295,13 @@ public class OrderService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict(value = "report:daily-sales", allEntries = true),
+		@CacheEvict(value = "report:product-performance", allEntries = true),
+		@CacheEvict(value = "report:debt-aging", allEntries = true),
+		@CacheEvict(value = "report:reconciliation", allEntries = true)
+	})
 	public Order advanceStatus(Long id, OrderStatus newStatus) {
 		final Order order = findById(id);
 
@@ -299,6 +329,13 @@ public class OrderService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict(value = "report:daily-sales", allEntries = true),
+		@CacheEvict(value = "report:product-performance", allEntries = true),
+		@CacheEvict(value = "report:debt-aging", allEntries = true),
+		@CacheEvict(value = "report:reconciliation", allEntries = true)
+	})
 	public Order recordDelivery(Long id, DeliveryStatus deliveryStatus, Integer bottlesReturned, Double cashCollected) {
 		final Order order = findById(id);
 

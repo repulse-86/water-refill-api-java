@@ -2,6 +2,8 @@ package com.example.waterrefillapijava.service;
 
 import java.math.BigDecimal;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -56,6 +58,10 @@ public class CustomerService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:debt-aging")
+	})
 	public Customer update(Long id, String name, String phone, String email, String subscriberStatus,
 			Integer bottleDebt, BigDecimal outstandingBalance) {
 		final Customer customer = findById(id);
@@ -86,6 +92,10 @@ public class CustomerService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:debt-aging")
+	})
 	public Customer settle(Long id, int bottleReturn, double cashPayment) {
 		final Customer customer = findById(id);
 

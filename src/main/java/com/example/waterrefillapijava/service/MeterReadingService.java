@@ -7,6 +7,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -84,6 +86,10 @@ public class MeterReadingService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:reconciliation")
+	})
 	public MeterReadingResponse create(String readingDateStr, BigDecimal meterValue, String notes) {
 		final LocalDate readingDate = parseDate(readingDateStr);
 
@@ -110,6 +116,10 @@ public class MeterReadingService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:reconciliation")
+	})
 	public MeterReadingResponse update(Long id, String readingDateStr, BigDecimal meterValue, String notes) {
 		final MeterReading reading = meterReadingRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Meter reading not found."));
@@ -137,6 +147,10 @@ public class MeterReadingService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:reconciliation")
+	})
 	public void delete(Long id) {
 		if (!meterReadingRepository.existsById(id)) {
 			throw new NotFoundException("Meter reading not found.");

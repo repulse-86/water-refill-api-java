@@ -1,5 +1,7 @@
 package com.example.waterrefillapijava.service;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,7 @@ public class SettingService {
 	private final SettingRepository settingRepository;
 
 	@Transactional(readOnly = true)
+	@Cacheable("settings")
 	public Setting getOrCreate() {
 		return settingRepository.findById(SETTINGS_ID).orElseGet(() -> {
 			final Setting defaults = Setting.builder()
@@ -32,6 +35,7 @@ public class SettingService {
 	}
 
 	@Transactional
+	@CacheEvict("settings")
 	public Setting update(String storeName, String storeAddress, String storePhone,
 			String currency, Integer lowStockThreshold) {
 		final Setting setting = getOrCreate();

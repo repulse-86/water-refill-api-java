@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +47,7 @@ public class DashboardService {
 	private final MeterReadingRepository meterReadingRepository;
 
 	@Transactional(readOnly = true)
+	@Cacheable("dashboard")
 	public DashboardResponse getDashboard() {
 		final LocalDate today = LocalDate.now();
 
