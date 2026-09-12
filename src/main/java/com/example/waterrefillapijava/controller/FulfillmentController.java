@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.waterrefillapijava.dto.FulfillmentBoardResponse;
-import com.example.waterrefillapijava.service.OrderService;
+import com.example.waterrefillapijava.service.OrderFulfillmentService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -15,10 +15,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class FulfillmentController {
 
-	private final OrderService orderService;
+	private final OrderFulfillmentService orderFulfillmentService;
 
 	@GetMapping("/orders")
 	public ResponseEntity<FulfillmentBoardResponse> getBoard() {
-		return ResponseEntity.ok(orderService.getBoard());
+		return ResponseEntity.ok(orderFulfillmentService.getBoard());
 	}
 }
