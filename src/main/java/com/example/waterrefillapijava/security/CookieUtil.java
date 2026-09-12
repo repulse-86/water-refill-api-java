@@ -17,7 +17,7 @@ import lombok.NonNull;
 @Component
 public class CookieUtil {
 
-	@Value("${app.cookie.secure:true}")
+	@Value("${app.cookie.secure:false}")
 	private boolean secure;
 
 	@Value("${app.cookie.samesite:Lax}")
