@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +17,16 @@ import jakarta.annotation.PostConstruct;
 
 @Service
 public class FileStorageService {
+
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
+        "jpg", "jpeg", "png", "gif", "webp"
+    );
+
+    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
+        "image/jpeg", "image/png", "image/gif", "image/webp"
+    );
+
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
 
     @Value("${file.upload-dir:./uploads}")
     private String uploadDir;
@@ -34,20 +45,44 @@ public class FileStorageService {
     }
 
     public String storeFile(MultipartFile file) {
-        String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
-        String fileName = UUID.randomUUID().toString() + "_" + originalFileName;
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Uploaded file is empty.");
+        }
+
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException("File size exceeds the 5 MB limit.");
+        }
+
+        final String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
+        final String extension = extractExtension(originalFileName).toLowerCase();
+
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException(
+                "File type '" + extension + "' is not allowed. Accepted types: jpg, jpeg, png, gif, webp."
+            );
+        }
+
+        if (file.getContentType() == null || !ALLOWED_CONTENT_TYPES.contains(file.getContentType().toLowerCase())) {
+            throw new IllegalArgumentException(
+                "Content type '" + file.getContentType() + "' is not allowed."
+            );
+        }
+
+        final String fileName = UUID.randomUUID() + "." + extension;
 
         try {
-            if (fileName.contains("..")) {
-                throw new RuntimeException("Sorry! Filename contains invalid path sequence " + fileName);
-            }
-
-            Path targetLocation = this.fileStorageLocation.resolve(fileName);
+            final Path targetLocation = this.fileStorageLocation.resolve(fileName);
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-
             return "/uploads/" + fileName;
         } catch (IOException ex) {
             throw new RuntimeException("Could not store file " + fileName + ". Please try again!", ex);
         }
+    }
+
+    private String extractExtension(String fileName) {
+        if (fileName == null || !fileName.contains(".")) {
+            return "";
+        }
+        return fileName.substring(fileName.lastIndexOf('.') + 1);
     }
 }
