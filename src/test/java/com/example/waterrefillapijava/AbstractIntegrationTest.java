@@ -1,5 +1,6 @@
 package com.example.waterrefillapijava;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -117,6 +118,20 @@ public abstract class AbstractIntegrationTest {
 				.header("Authorization", "Bearer " + token)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(objectMapper.writeValueAsString(fields)))
+			.andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+	}
+
+	protected Long extractId(final String json) throws Exception {
+		return objectMapper.readTree(json).get("id").asLong();
+	}
+
+	protected String createMultipartProduct(final String token, final Map<String, Object> fields) throws Exception {
+		return mockMvc.perform(multipart("/api/v1/products")
+				.file(new org.springframework.mock.web.MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(fields)))
+				.header("Authorization", "Bearer " + token))
 			.andExpect(status().isOk())
 			.andReturn()
 			.getResponse()

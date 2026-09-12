@@ -33,14 +33,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void createWalkInOrderWithItemsReturnsOrder() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Order Test Product",
 			"type", "accessory",
 			"price", 10.0,
 			"stock_quantity", 50,
 			"reorder_point", 5
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -69,14 +68,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void createDeliveryOrderWithAddressReturnsOrder() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Delivery Test Product",
 			"type", "accessory",
 			"price", 25.0,
 			"stock_quantity", 50,
 			"reorder_point", 5
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -100,14 +98,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void createDeliveryOrderWithoutAddressReturns422() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "No Address Product",
 			"type", "accessory",
 			"price", 10.0,
 			"stock_quantity", 50,
 			"reorder_point", 5
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -142,14 +139,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void createOrderDeductsStock() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Stock Test Product",
 			"type", "accessory",
 			"price", 5.0,
 			"stock_quantity", 20,
 			"reorder_point", 2
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -173,14 +169,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void advanceWalkInOrderStatusThroughValidTransitions() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Status Test Product",
 			"type", "accessory",
 			"price", 10.0,
 			"stock_quantity", 50,
 			"reorder_point", 5
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		final String orderResult = mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -214,14 +209,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void advanceOrderStatusWithInvalidTransitionReturns422() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Invalid Transition Product",
 			"type", "accessory",
 			"price", 10.0,
 			"stock_quantity", 50,
 			"reorder_point", 5
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		final String orderResult = mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -248,14 +242,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void deleteOrderRestoresStock() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Delete Stock Product",
 			"type", "accessory",
 			"price", 10.0,
 			"stock_quantity", 20,
 			"reorder_point", 2
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		final String orderResult = mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -287,14 +280,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void getOrderByIdReturnsOrder() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Get Order Product",
 			"type", "accessory",
 			"price", 10.0,
 			"stock_quantity", 50,
 			"reorder_point", 5
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		final String orderResult = mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -320,14 +312,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void recordDeliveryUpdatesOrder() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Delivery Record Product",
 			"type", "accessory",
 			"price", 10.0,
 			"stock_quantity", 50,
 			"reorder_point", 5
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		final String orderResult = mockMvc.perform(post("/api/v1/orders")
 				.header("Authorization", "Bearer " + token)
@@ -360,14 +351,13 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	void listOrdersWithPaginationReturnsCorrectPage() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = createProduct(token, Map.of(
+		final Long productId = extractId(createProduct(token, Map.of(
 			"name", "Pagination Product",
 			"type", "accessory",
 			"price", 10.0,
 			"stock_quantity", 50,
 			"reorder_point", 5
-		));
-		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
+		)));
 
 		for (int i = 0; i < 3; i++) {
 			mockMvc.perform(post("/api/v1/orders")
