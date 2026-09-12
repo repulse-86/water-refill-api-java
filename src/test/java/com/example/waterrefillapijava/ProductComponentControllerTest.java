@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
 import java.util.Map;
+import org.springframework.mock.web.MockMultipartFile;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 
 class ProductComponentControllerTest extends AbstractIntegrationTest {
 
@@ -18,36 +20,32 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void createProductWithComponentsReturnsProductAndComponents() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String componentA = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String componentA = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Component A",
 					"type", "accessory",
 					"price", 2.0,
 					"stock_quantity", 100,
 					"reorder_point", 10
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn().getResponse().getContentAsString();
 		final Long componentAId = objectMapper.readTree(componentA).get("id").asLong();
 
-		final String componentB = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String componentB = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Component B",
 					"type", "accessory",
 					"price", 1.0,
 					"stock_quantity", 100,
 					"reorder_point", 10
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn().getResponse().getContentAsString();
 		final Long componentBId = objectMapper.readTree(componentB).get("id").asLong();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Water With BOM",
 					"type", "water_refill",
 					"volume_gallons", 5,
@@ -59,6 +57,7 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 						Map.of("component_id", componentBId, "quantity", 1)
 					)
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.name").value("Water With BOM"))
 			.andReturn().getResponse().getContentAsString();
@@ -76,23 +75,20 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void createProductWithSelfReferenceComponentReturns422() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Self Ref Product",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn().getResponse().getContentAsString();
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		mockMvc.perform(put("/api/v1/products/" + productId)
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		mockMvc.perform(multipart("/api/v1/products/" + productId)
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Self Ref Product",
 					"type", "accessory",
 					"price", 10.0,
@@ -102,6 +98,8 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 						Map.of("component_id", productId, "quantity", 1)
 					)
 				))))
+				.with(req -> { req.setMethod("PUT"); return req; })
+				.header("Authorization", "Bearer " + token))
 			.andExpect(status().isUnprocessableEntity());
 	}
 
@@ -109,23 +107,20 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void updateProductReplacesComponents() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Comp To Replace",
 					"type", "accessory",
 					"price", 3.0,
 					"stock_quantity", 100,
 					"reorder_point", 10
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn().getResponse().getContentAsString();
 		final Long compId = objectMapper.readTree(compResult).get("id").asLong();
 
-		final String prodResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String prodResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Product With Old BOM",
 					"type", "water_refill",
 					"volume_gallons", 5,
@@ -136,6 +131,7 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 						Map.of("component_id", compId, "quantity", 1)
 					)
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn().getResponse().getContentAsString();
 		final Long productId = objectMapper.readTree(prodResult).get("id").asLong();
 
@@ -144,23 +140,20 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.length()").value(1));
 
-		final String comp2Result = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String comp2Result = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "New Comp",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 100,
 					"reorder_point", 10
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn().getResponse().getContentAsString();
 		final Long comp2Id = objectMapper.readTree(comp2Result).get("id").asLong();
 
-		mockMvc.perform(put("/api/v1/products/" + productId)
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		mockMvc.perform(multipart("/api/v1/products/" + productId)
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Product With Old BOM",
 					"type", "water_refill",
 					"volume_gallons", 5,
@@ -171,6 +164,8 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 						Map.of("component_id", comp2Id, "quantity", 3)
 					)
 				))))
+				.with(req -> { req.setMethod("PUT"); return req; })
+				.header("Authorization", "Bearer " + token))
 			.andExpect(status().isOk());
 
 		mockMvc.perform(get("/api/v1/products/" + productId + "/components")
@@ -185,32 +180,30 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void listProductComponentsReturnsPage() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Parent Product",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Child Component",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 10,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -240,32 +233,30 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void addProductComponentReturnsComponent() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Add Comp Parent",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Add Comp Child",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 10,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -305,32 +296,30 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void addComponentWithDuplicateReturns409() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Dup Comp Parent",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Dup Comp Child",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 10,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -361,16 +350,15 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void addSelfReferenceComponentReturns422() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Self Ref Product",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -392,32 +380,30 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void addComponentWithZeroQuantityReturns422() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Zero Qty Parent",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Zero Qty Child",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 10,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -439,32 +425,30 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void updateProductComponentQuantityReturnsUpdated() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Update Comp Parent",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Update Comp Child",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 10,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -495,32 +479,30 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void deleteProductComponentReturnsSuccess() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Delete Comp Parent",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Delete Comp Child",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 10,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -553,32 +535,30 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void listProductComponentsWithPaginationReturnsCorrectPage() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Paginated Comp Parent",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Paginated Comp Child",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 10,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
@@ -608,32 +588,30 @@ class ProductComponentControllerTest extends AbstractIntegrationTest {
 	void listProductComponentsWithSearchReturnsFilteredResults() throws Exception {
 		final String token = loginAsTestUser();
 
-		final String productResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String productResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Search Comp Parent",
 					"type", "accessory",
 					"price", 10.0,
 					"stock_quantity", 5,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
 
 		final Long productId = objectMapper.readTree(productResult).get("id").asLong();
 
-		final String compResult = mockMvc.perform(post("/api/v1/products")
-				.header("Authorization", "Bearer " + token)
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(objectMapper.writeValueAsString(Map.of(
+		final String compResult = mockMvc.perform(multipart("/api/v1/products")
+				.file(new MockMultipartFile("product", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(Map.of(
 					"name", "Unique XYZ Component",
 					"type", "accessory",
 					"price", 5.0,
 					"stock_quantity", 10,
 					"reorder_point", 1
 				))))
+				.header("Authorization", "Bearer " + token))
 			.andReturn()
 			.getResponse()
 			.getContentAsString();
