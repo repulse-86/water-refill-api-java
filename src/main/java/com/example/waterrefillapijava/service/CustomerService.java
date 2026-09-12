@@ -96,12 +96,12 @@ public class CustomerService {
 		@CacheEvict("dashboard"),
 		@CacheEvict("report:debt-aging")
 	})
-	public Customer settle(Long id, int bottleReturn, double cashPayment) {
+	public Customer settle(Long id, int bottleReturn, BigDecimal cashPayment) {
 		final Customer customer = findById(id);
 
 		final int newBottleDebt = Math.max(0, customer.getBottleDebt() - bottleReturn);
 		final BigDecimal newBalance = customer.getOutstandingBalance()
-			.subtract(BigDecimal.valueOf(cashPayment))
+			.subtract(cashPayment)
 			.max(BigDecimal.ZERO);
 
 		customer.setBottleDebt(newBottleDebt);

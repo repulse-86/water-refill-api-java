@@ -1,5 +1,7 @@
 package com.example.waterrefillapijava.dto;
 
+import java.math.BigDecimal;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.PositiveOrZero;
 
@@ -10,6 +12,6 @@ public record SettleCustomerRequest(
 
 	@PositiveOrZero(message = "The cash payment must be a positive number.")
 	@JsonProperty("cash_payment")
-	Double cashPayment
+	BigDecimal cashPayment
 ) {
 }

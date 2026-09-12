@@ -1,5 +1,7 @@
 package com.example.waterrefillapijava.dto;
 
+import java.math.BigDecimal;
+
 import com.example.waterrefillapijava.model.DeliveryStatus;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -14,6 +16,6 @@ public record DeliveryRequest(
 	Integer bottlesReturned,
 
 	@JsonProperty("cash_collected")
-	Double cashCollected
+	BigDecimal cashCollected
 ) {
 }

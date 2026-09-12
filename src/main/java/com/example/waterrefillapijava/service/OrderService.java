@@ -336,7 +336,7 @@ public class OrderService {
 		@CacheEvict(value = "report:debt-aging", allEntries = true),
 		@CacheEvict(value = "report:reconciliation", allEntries = true)
 	})
-	public Order recordDelivery(Long id, DeliveryStatus deliveryStatus, Integer bottlesReturned, Double cashCollected) {
+	public Order recordDelivery(Long id, DeliveryStatus deliveryStatus, Integer bottlesReturned, BigDecimal cashCollected) {
 		final Order order = findById(id);
 
 		if (order.getOrderType() != OrderType.delivery) {
@@ -355,11 +355,11 @@ public class OrderService {
 			order.setBottlesReturnedAtDelivery(bottlesReturned);
 		}
 
-		if (cashCollected != null && cashCollected > 0 && order.getCustomer() != null) {
+		if (cashCollected != null && cashCollected.compareTo(BigDecimal.ZERO) > 0 && order.getCustomer() != null) {
 			final Customer customer = order.getCustomer();
-			customer.setOutstandingBalance(customer.getOutstandingBalance().subtract(BigDecimal.valueOf(cashCollected)));
+			customer.setOutstandingBalance(customer.getOutstandingBalance().subtract(cashCollected));
 			customerRepository.save(customer);
-			order.setCashCollectedAtDelivery(BigDecimal.valueOf(cashCollected));
+			order.setCashCollectedAtDelivery(cashCollected);
 		}
 
 		if (deliveryStatus == DeliveryStatus.delivered) {
