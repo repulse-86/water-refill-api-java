@@ -1,5 +1,7 @@
 package com.example.waterrefillapijava.controller;
 
+import java.math.BigDecimal;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -97,7 +99,7 @@ public class CustomerController {
 		@Valid @RequestBody final SettleCustomerRequest request
 	) {
 		final int bottleReturn = request.bottleReturn() != null ? request.bottleReturn() : 0;
-		final double cashPayment = request.cashPayment() != null ? request.cashPayment() : 0.0;
+		final BigDecimal cashPayment = request.cashPayment() != null ? request.cashPayment() : BigDecimal.ZERO;
 
 		final Customer customer = customerService.settle(id, bottleReturn, cashPayment);
 
