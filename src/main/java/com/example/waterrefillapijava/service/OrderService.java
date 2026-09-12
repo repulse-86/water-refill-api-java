@@ -183,7 +183,7 @@ public class OrderService {
 					.build();
 			}
 
-			final BigDecimal unitPrice = item.unitPrice() != null ? item.unitPrice() : product.getPrice();
+			final BigDecimal unitPrice = product.getPrice();
 
 			final OrderItem orderItem = OrderItem.builder()
 				.order(order)
@@ -253,7 +253,7 @@ public class OrderService {
 			final Product product = productRepository.findById(item.productId())
 				.orElseThrow(() -> new NotFoundException("Product not found."));
 
-			final BigDecimal unitPrice = item.unitPrice() != null ? item.unitPrice() : product.getPrice();
+			final BigDecimal unitPrice = product.getPrice();
 
 			final OrderItem orderItem = OrderItem.builder()
 				.order(order)
