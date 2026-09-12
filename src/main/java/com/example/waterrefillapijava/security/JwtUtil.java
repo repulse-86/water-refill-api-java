@@ -25,11 +25,11 @@ public class JwtUtil {
 	@Value("${app.jwt.access-expiration-ms:900000}")
 	private long accessTokenExpirationMs;
 
-	@Value("${app.jwt.remember-expiration-ms:604800000}")
-	private long rememberTokenExpirationMs;
-
 	@Value("${app.jwt.issuer:water-refill}")
 	private String issuer;
+
+	@Value("${app.jwt.audience:water-refill-api}")
+	private String audience;
 
 	private SecretKey key;
 
@@ -39,12 +39,7 @@ public class JwtUtil {
 	}
 
 	public String generateAccessToken(@NonNull final String username, final boolean remember) {
-		final long expirationMs = remember ? rememberTokenExpirationMs : accessTokenExpirationMs;
-		return generateToken(username, expirationMs, remember);
-	}
-
-	public String generateRefreshToken(@NonNull final String username, final boolean remember) {
-		return generateToken(username, rememberTokenExpirationMs, remember);
+		return generateToken(username, accessTokenExpirationMs, remember);
 	}
 
 	public String generateRefreshToken(@NonNull final String username, final long durationMs, final boolean remember) {
@@ -61,12 +56,13 @@ public class JwtUtil {
 			.issuedAt(now)
 			.expiration(expiryDate)
 			.issuer(issuer)
+			.audience().add(audience).and()
 			.claim("remember", remember)
 			.signWith(key)
 			.compact();
 	}
 
-	public String extractSubject(@NonNull final String token) {
+	public String getUserFromToken(@NonNull final String token) {
 		return parseValidatedClaims(token).getSubject();
 	}
 
@@ -93,6 +89,7 @@ public class JwtUtil {
 		return Jwts.parser()
 			.verifyWith(key)
 			.requireIssuer(issuer)
+			.requireAudience(audience)
 			.build()
 			.parseSignedClaims(token)
 			.getPayload();

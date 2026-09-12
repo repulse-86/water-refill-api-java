@@ -17,7 +17,7 @@ import lombok.NonNull;
 @Component
 public class CookieUtil {
 
-	@Value("${app.cookie.secure:false}")
+	@Value("${app.cookie.secure:true}")
 	private boolean secure;
 
 	@Value("${app.cookie.samesite:Lax}")
@@ -30,15 +30,15 @@ public class CookieUtil {
 		@NonNull final HttpServletResponse response,
 		@NonNull final String accessToken,
 		@NonNull final String refreshToken,
-		final long accessDurationMs,
 		final long refreshDurationMs,
+		final long accessTokenDurationMs,
 		final boolean remember
 	) {
 		final ResponseCookie accessCookie = ResponseCookie.from("access_token", accessToken)
 			.httpOnly(true)
 			.secure(secure)
 			.path("/")
-			.maxAge(Duration.ofMillis(accessDurationMs))
+			.maxAge(Duration.ofMillis(accessTokenDurationMs))
 			.sameSite(sameSite)
 			.build();
 
@@ -48,7 +48,7 @@ public class CookieUtil {
 			.path("/api/v1/refresh")
 			.sameSite(refreshSameSite);
 		if (remember) {
-			refreshBuilder.maxAge(Duration.ofMillis(refreshDurationMs));
+			refreshBuilder.maxAge(refreshDurationMs / 1000);
 		}
 		final ResponseCookie refreshCookie = refreshBuilder.build();
 
@@ -70,7 +70,7 @@ public class CookieUtil {
 			.secure(secure)
 			.path("/api/v1/refresh")
 			.maxAge(0)
-			.sameSite(sameSite)
+			.sameSite(refreshSameSite)
 			.build();
 
 		response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());

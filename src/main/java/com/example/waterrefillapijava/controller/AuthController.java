@@ -59,9 +59,6 @@ public class AuthController {
 	@Value("${app.jwt.access-expiration-ms:900000}")
 	private long accessTokenExpirationMs;
 
-	@Value("${app.jwt.remember-expiration-ms:604800000}")
-	private long rememberTokenExpirationMs;
-
 	@Value("${app.trust-proxy:false}")
 	private boolean trustProxy;
 
@@ -88,13 +85,12 @@ public class AuthController {
 		apiRateLimiter.resetLogin(clientIp, user.getUsername());
 		loginAttemptService.reset(user.getUsername());
 
-		final String accessToken = jwtUtil.generateAccessToken(user.getUsername(), request.remember());
+		final String accessToken = jwtUtil.generateAccessToken(user.getUsername(), false);
 		final TokenWithFamily refresh = tokenService.generateRefreshTokenWithFamily(user, request.remember(), httpRequest);
 
-		final long accessDurationMs = request.remember() ? rememberTokenExpirationMs : accessTokenExpirationMs;
 		final long refreshDurationMs = refresh.expiresAt().toEpochMilli() - Instant.now().toEpochMilli();
 
-		cookieUtil.addTokenCookies(response, accessToken, refresh.token(), accessDurationMs, refreshDurationMs, request.remember());
+		cookieUtil.addTokenCookies(response, accessToken, refresh.token(), refreshDurationMs, accessTokenExpirationMs, request.remember());
 
 		log.info("Login successful: userId={}, username={}, ip={}", user.getId(), user.getUsername(), clientIp);
 
@@ -126,7 +122,7 @@ public class AuthController {
 			throw new AuthenticationException("Invalid refresh token");
 		}
 
-		final String username = jwtUtil.extractSubject(refreshToken);
+		final String username = jwtUtil.getUserFromToken(refreshToken);
 		final Optional<User> userOpt = userService.loadByUsername(username);
 
 		if (userOpt.isEmpty()) {
