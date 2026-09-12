@@ -1,12 +1,15 @@
 package com.example.waterrefillapijava.repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.example.waterrefillapijava.model.Customer;
@@ -30,4 +33,12 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
 	@Query("SELECT c FROM Customer c WHERE c.outstandingBalance > 0 OR c.bottleDebt > 0 ORDER BY c.outstandingBalance DESC")
 	List<Customer> findWithDebt();
+
+	@Modifying
+	@Query("UPDATE Customer c SET c.outstandingBalance = c.outstandingBalance + :amount WHERE c.id = :id")
+	void adjustBalance(@Param("id") Long id, @Param("amount") BigDecimal amount);
+
+	@Modifying
+	@Query("UPDATE Customer c SET c.bottleDebt = c.bottleDebt - :qty WHERE c.id = :id")
+	void decrementBottleDebt(@Param("id") Long id, @Param("qty") int qty);
 }

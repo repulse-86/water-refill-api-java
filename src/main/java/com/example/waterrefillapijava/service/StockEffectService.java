@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import com.example.waterrefillapijava.exception.FieldValidationException;
 import com.example.waterrefillapijava.model.Customer;
 import com.example.waterrefillapijava.model.Order;
 import com.example.waterrefillapijava.model.OrderItem;
@@ -30,64 +31,61 @@ public class StockEffectService {
 	private final OrderItemRepository orderItemRepository;
 
 	public void applyProductStockDeduction(final Product product, final int quantity) {
-		product.setStockQuantity(product.getStockQuantity() - quantity);
-		productRepository.save(product);
+		final int updated = productRepository.decrementStockIfAvailable(product.getId(), quantity);
+		if (updated == 0) {
+			throw FieldValidationException.builder()
+				.add("items", "Insufficient stock for product '" + product.getName() + "'.")
+				.build();
+		}
 
 		if (product.getType() == ProductType.water_refill) {
-			applyBomConsumption(product, quantity);
+			applyBomConsumption(product.getId(), quantity);
 		}
 	}
 
 	public void restoreStockForOrder(final Order order) {
-		final List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+		final List<OrderItem> items = orderItemRepository.findByOrderIdWithProduct(order.getId());
 		for (OrderItem item : items) {
-			final Product product = item.getProduct();
-			product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
-			productRepository.save(product);
+			productRepository.incrementStock(item.getProduct().getId(), item.getQuantity());
 
-			if (product.getType() == ProductType.water_refill) {
+			if (item.getProduct().getType() == ProductType.water_refill) {
 				final List<ProductComponent> components = productComponentRepository
-					.findByProductId(product.getId(), Pageable.unpaged()).getContent();
+					.findByProductId(item.getProduct().getId(), Pageable.unpaged()).getContent();
 				for (ProductComponent pc : components) {
-					final Product componentProduct = pc.getComponent();
 					final int restoreQty = pc.getQuantity() * item.getQuantity();
-					componentProduct.setStockQuantity(componentProduct.getStockQuantity() + restoreQty);
-					productRepository.save(componentProduct);
+					productRepository.incrementStock(pc.getComponent().getId(), restoreQty);
 				}
 			}
 		}
 
 		if (order.getPaymentMethod() == PaymentMethod.credit && order.getCustomer() != null) {
-			final Customer customer = order.getCustomer();
-			customer.setOutstandingBalance(customer.getOutstandingBalance().subtract(order.getTotalAmount()));
-			customerRepository.save(customer);
+			customerRepository.adjustBalance(order.getCustomer().getId(), order.getTotalAmount().negate());
 		}
 	}
 
 	public void applySaleEffects(final Order order) {
 		if (order.getPaymentMethod() == PaymentMethod.credit && order.getCustomer() != null) {
-			final Customer customer = order.getCustomer();
-			customer.setOutstandingBalance(customer.getOutstandingBalance().add(order.getTotalAmount()));
-			customerRepository.save(customer);
+			customerRepository.adjustBalance(order.getCustomer().getId(), order.getTotalAmount());
 		}
 
 		if (order.getBottlesReturnedAtDelivery() != null && order.getBottlesReturnedAtDelivery() > 0
 				&& order.getCustomer() != null) {
-			final Customer customer = order.getCustomer();
-			customer.setBottleDebt(Math.max(0, customer.getBottleDebt() - order.getBottlesReturnedAtDelivery()));
-			customerRepository.save(customer);
+			customerRepository.decrementBottleDebt(order.getCustomer().getId(), order.getBottlesReturnedAtDelivery());
 		}
 	}
 
-	private void applyBomConsumption(final Product product, final int quantity) {
+	private void applyBomConsumption(final Long productId, final int quantity) {
 		final List<ProductComponent> components = productComponentRepository
-			.findByProductId(product.getId(), Pageable.unpaged()).getContent();
+			.findByProductId(productId, Pageable.unpaged()).getContent();
 
 		for (ProductComponent pc : components) {
-			final Product componentProduct = pc.getComponent();
 			final int consumeQty = pc.getQuantity() * quantity;
-			componentProduct.setStockQuantity(componentProduct.getStockQuantity() - consumeQty);
-			productRepository.save(componentProduct);
+			final int updated = productRepository.decrementStockIfAvailable(pc.getComponent().getId(), consumeQty);
+			if (updated == 0) {
+				throw FieldValidationException.builder()
+					.add("items", "Insufficient stock for component product '" + pc.getComponent().getName() + "'.")
+					.build();
+			}
 		}
 	}
 }
