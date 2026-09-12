@@ -54,6 +54,7 @@ public class AuthController {
 	private final CookieUtil cookieUtil;
 	private final TokenService tokenService;
 	private final ApiRateLimiter apiRateLimiter;
+	private final com.example.waterrefillapijava.security.LoginAttemptService loginAttemptService;
 
 	@Value("${app.jwt.access-expiration-ms:900000}")
 	private long accessTokenExpirationMs;
@@ -73,16 +74,19 @@ public class AuthController {
 	) {
 		final String clientIp = ClientFingerprintUtil.extractClientIp(httpRequest, trustProxy);
 		apiRateLimiter.checkLogin(clientIp, request.username());
+		loginAttemptService.checkAndThrow(request.username());
 
 		final Optional<User> userOpt = userService.loadByUsername(request.username());
 
 		if (userOpt.isEmpty() || !passwordEncoder.matches(request.password(), userOpt.get().getPassword())) {
+			loginAttemptService.recordFailure(request.username());
 			log.warn("Login failed: username={}", request.username());
 			throw new AuthenticationException("Your credentials do not exist in our records.");
 		}
 
 		final User user = userOpt.get();
 		apiRateLimiter.resetLogin(clientIp, user.getUsername());
+		loginAttemptService.reset(user.getUsername());
 
 		final String accessToken = jwtUtil.generateAccessToken(user.getUsername(), request.remember());
 		final TokenWithFamily refresh = tokenService.generateRefreshTokenWithFamily(user, request.remember(), httpRequest);
