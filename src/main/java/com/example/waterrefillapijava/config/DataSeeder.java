@@ -2,8 +2,8 @@ package com.example.waterrefillapijava.config;
 
 import java.math.BigDecimal;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -32,7 +32,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Component
-@Profile("!prod")
 @RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
@@ -47,17 +46,40 @@ public class DataSeeder implements CommandLineRunner {
 	private final MeterReadingRepository meterReadingRepository;
 	private final PasswordEncoder passwordEncoder;
 
+	@Value("${app.seed.mode:full}")
+	private String seedMode;
+
+	@Value("${app.seed.admin.username:admin}")
+	private String seedAdminUsername;
+
+	@Value("${app.seed.admin.password:password}")
+	private String seedAdminPassword;
+
 	@Override
 	public void run(String... args) {
+		switch (seedMode) {
+			case "admin" -> seedAdmin();
+			case "full" -> {
+				seedAdmin();
+				seedDemoData();
+			}
+			case "off" -> log.warn("Seeding disabled (app.seed.mode=off)");
+			default -> throw new IllegalStateException("Unknown seed mode: " + seedMode);
+		}
+	}
+
+	private void seedAdmin() {
 		if (userRepository.count() == 0) {
 			final User admin = User.builder()
-				.username("admin")
-				.password(passwordEncoder.encode("password"))
+				.username(seedAdminUsername)
+				.password(passwordEncoder.encode(seedAdminPassword))
 				.build();
 			userRepository.save(admin);
-			log.info("Seeded default admin user (username: admin, password: password)");
+			log.info("Seeded admin user (username: {})", seedAdminUsername);
 		}
+	}
 
+	private void seedDemoData() {
 		if (settingRepository.findById(1L).isEmpty()) {
 			final Setting defaults = Setting.builder()
 				.id(1L)
