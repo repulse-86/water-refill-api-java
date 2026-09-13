@@ -1,16 +1,21 @@
 package com.example.waterrefillapijava;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +27,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.example.waterrefillapijava.dto.OrderItemRequest;
+import com.example.waterrefillapijava.exception.ConflictException;
 import com.example.waterrefillapijava.exception.FieldValidationException;
 import com.example.waterrefillapijava.exception.NotFoundException;
 import com.example.waterrefillapijava.model.Customer;
@@ -168,7 +174,7 @@ class OrderServiceTest {
 	}
 
 	@Test
-	void deleteRestoresStockAndDeletesItems() {
+	void deleteSoftDeletesOrder() {
 		final Order order = Order.builder()
 			.id(1L)
 			.orderType(OrderType.walk_in)
@@ -176,19 +182,20 @@ class OrderServiceTest {
 			.totalAmount(new BigDecimal("25"))
 			.customer(null)
 			.build();
-		when(orderRepository.existsById(1L)).thenReturn(true);
 		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
 		orderService.delete(1L);
 
-		verify(stockEffectService).restoreStockForOrder(order);
-		verify(orderItemRepository).findByOrderId(1L);
-		verify(orderRepository).deleteById(1L);
+		assertTrue(order.isDeleted());
+		assertNotNull(order.getDeletedAt());
+		verify(orderRepository).save(order);
+		verifyNoInteractions(stockEffectService);
+		verifyNoInteractions(orderItemRepository);
 	}
 
 	@Test
 	void deleteNotFoundThrows() {
-		when(orderRepository.existsById(999L)).thenReturn(false);
+		when(orderRepository.findById(999L)).thenReturn(Optional.empty());
 
 		assertThrows(NotFoundException.class, () -> orderService.delete(999L));
 	}
@@ -228,5 +235,107 @@ class OrderServiceTest {
 		assertEquals(OrderType.walk_in, response.orderType());
 		assertEquals(1, response.items().size());
 		assertEquals("Water", response.items().get(0).productName());
+	}
+
+	@Test
+	void restoreOrder() {
+		final Order order = Order.builder()
+			.id(1L)
+			.orderType(OrderType.walk_in)
+			.status(OrderStatus.queued)
+			.paymentMethod(PaymentMethod.cash)
+			.totalAmount(new BigDecimal("25"))
+			.deleted(true)
+			.deletedAt(LocalDateTime.now())
+			.build();
+		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+		orderService.restore(1L);
+
+		assertFalse(order.isDeleted());
+		assertNull(order.getDeletedAt());
+		verify(orderRepository).save(order);
+	}
+
+	@Test
+	void restoreNonArchivedOrderThrowsConflict() {
+		final Order order = Order.builder()
+			.id(1L)
+			.orderType(OrderType.walk_in)
+			.status(OrderStatus.queued)
+			.paymentMethod(PaymentMethod.cash)
+			.totalAmount(new BigDecimal("25"))
+			.deleted(false)
+			.build();
+		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+		assertThrows(ConflictException.class, () -> orderService.restore(1L));
+		verify(orderRepository, never()).save(order);
+	}
+
+	@Test
+	void permanentDeleteOrder() {
+		final Order order = Order.builder()
+			.id(1L)
+			.orderType(OrderType.walk_in)
+			.status(OrderStatus.queued)
+			.paymentMethod(PaymentMethod.cash)
+			.totalAmount(new BigDecimal("25"))
+			.deleted(true)
+			.deletedAt(LocalDateTime.now())
+			.build();
+		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderItemRepository.findByOrderId(1L)).thenReturn(List.of());
+
+		orderService.permanentDelete(1L);
+
+		verify(orderRepository).deleteById(1L);
+	}
+
+	@Test
+	void permanentDeleteNonArchivedOrderThrowsConflict() {
+		final Order order = Order.builder()
+			.id(1L)
+			.orderType(OrderType.walk_in)
+			.status(OrderStatus.queued)
+			.paymentMethod(PaymentMethod.cash)
+			.totalAmount(new BigDecimal("25"))
+			.deleted(false)
+			.build();
+		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+		assertThrows(ConflictException.class, () -> orderService.permanentDelete(1L));
+		verify(orderRepository, never()).deleteById(anyLong());
+	}
+
+	@Test
+	void deleteAlreadyDeletedOrderIsIdempotent() {
+		final Order order = Order.builder()
+			.id(1L)
+			.orderType(OrderType.walk_in)
+			.paymentMethod(PaymentMethod.cash)
+			.totalAmount(new BigDecimal("25"))
+			.deleted(true)
+			.deletedAt(LocalDateTime.now())
+			.build();
+		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+		orderService.delete(1L);
+
+		assertTrue(order.isDeleted());
+		verify(orderRepository, never()).save(order);
+	}
+
+	@Test
+	void findByIdDeletedOrderThrows() {
+		final Order order = Order.builder()
+			.id(1L)
+			.orderType(OrderType.walk_in)
+			.status(OrderStatus.queued)
+			.deleted(true)
+			.build();
+		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+		assertThrows(NotFoundException.class, () -> orderService.findById(1L));
 	}
 }

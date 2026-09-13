@@ -139,6 +139,28 @@ class OrderFulfillmentServiceTest {
 			() -> fulfillmentService.recordDelivery(999L, DeliveryStatus.delivered, 0, BigDecimal.ZERO));
 	}
 
+	@Test
+	void advanceStatusOnDeletedOrderThrows() {
+		final Order order = Order.builder()
+			.id(1L).orderType(OrderType.walk_in).status(OrderStatus.queued)
+			.deleted(true).build();
+		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+		assertThrows(NotFoundException.class,
+			() -> fulfillmentService.advanceStatus(1L, OrderStatus.processing));
+	}
+
+	@Test
+	void recordDeliveryOnDeletedOrderThrows() {
+		final Order order = Order.builder()
+			.id(1L).orderType(OrderType.delivery).status(OrderStatus.transit)
+			.deleted(true).build();
+		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+		assertThrows(NotFoundException.class,
+			() -> fulfillmentService.recordDelivery(1L, DeliveryStatus.delivered, 0, BigDecimal.ZERO));
+	}
+
 	private Customer createCustomer(final Long id, final int bottleDebt) {
 		final Customer c = new Customer();
 		c.setId(id);

@@ -79,6 +79,28 @@ public class FileStorageService {
         }
     }
 
+    public void delete(String url) {
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        if (!url.startsWith("/uploads/")) {
+            return;
+        }
+        final String fileName = url.substring("/uploads/".length());
+        if (fileName.contains("..") || fileName.contains("/") || fileName.contains("\\")) {
+            return;
+        }
+        try {
+            final Path target = fileStorageLocation.resolve(fileName).normalize();
+            if (!target.startsWith(fileStorageLocation)) {
+                return;
+            }
+            Files.deleteIfExists(target);
+        } catch (final IOException e) {
+            // Log and swallow — file deletion is best-effort after DB commit
+        }
+    }
+
     private String extractExtension(String fileName) {
         if (fileName == null || !fileName.contains(".")) {
             return "";
