@@ -35,6 +35,9 @@ public record MeterReadingResponse(
 	String createdAt,
 
 	@JsonProperty("updated_at")
-	String updatedAt
+	String updatedAt,
+
+	@JsonProperty("deleted_at")
+	String deletedAt
 ) {
 }

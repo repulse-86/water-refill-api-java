@@ -20,6 +20,9 @@ public record CustomerResponse(
 	Integer bottleDebt,
 
 	@JsonProperty("outstanding_balance")
-	BigDecimal outstandingBalance
+	BigDecimal outstandingBalance,
+
+	@JsonProperty("deleted_at")
+	String deletedAt
 ) {
 }
