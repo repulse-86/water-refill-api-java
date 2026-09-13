@@ -17,25 +17,28 @@ import com.example.waterrefillapijava.model.OrderType;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-	Page<Order> findByOrderType(OrderType orderType, Pageable pageable);
+	// User-facing (deleted = false)
+	Page<Order> findByDeletedFalse(Pageable pageable);
 
-	Page<Order> findByStatus(OrderStatus status, Pageable pageable);
+	Page<Order> findByOrderTypeAndDeletedFalse(OrderType orderType, Pageable pageable);
 
-	Page<Order> findByOrderTypeAndStatus(OrderType orderType, OrderStatus status, Pageable pageable);
+	Page<Order> findByStatusAndDeletedFalse(OrderStatus status, Pageable pageable);
 
-	@Query("SELECT o FROM Order o WHERE o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%")
-	Page<Order> findBySearch(@Param("search") String search, Pageable pageable);
+	Page<Order> findByOrderTypeAndStatusAndDeletedFalse(OrderType orderType, OrderStatus status, Pageable pageable);
 
-	@Query("SELECT o FROM Order o WHERE o.orderType = :orderType AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
-	Page<Order> findByOrderTypeAndSearch(@Param("orderType") OrderType orderType, @Param("search") String search, Pageable pageable);
+	@Query("SELECT o FROM Order o WHERE o.deleted = false AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
+	Page<Order> findBySearchAndDeletedFalse(@Param("search") String search, Pageable pageable);
 
-	@Query("SELECT o FROM Order o WHERE o.status = :status AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
-	Page<Order> findByStatusAndSearch(@Param("status") OrderStatus status, @Param("search") String search, Pageable pageable);
+	@Query("SELECT o FROM Order o WHERE o.deleted = false AND o.orderType = :orderType AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
+	Page<Order> findByOrderTypeAndSearchAndDeletedFalse(@Param("orderType") OrderType orderType, @Param("search") String search, Pageable pageable);
 
-	@Query("SELECT o FROM Order o WHERE o.orderType = :orderType AND o.status = :status AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
-	Page<Order> findByOrderTypeAndStatusAndSearch(@Param("orderType") OrderType orderType, @Param("status") OrderStatus status, @Param("search") String search, Pageable pageable);
+	@Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
+	Page<Order> findByStatusAndSearchAndDeletedFalse(@Param("status") OrderStatus status, @Param("search") String search, Pageable pageable);
 
-	@Query("SELECT o FROM Order o LEFT JOIN FETCH o.customer ORDER BY o.id DESC")
+	@Query("SELECT o FROM Order o WHERE o.deleted = false AND o.orderType = :orderType AND o.status = :status AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
+	Page<Order> findByOrderTypeAndStatusAndSearchAndDeletedFalse(@Param("orderType") OrderType orderType, @Param("status") OrderStatus status, @Param("search") String search, Pageable pageable);
+
+	@Query("SELECT o FROM Order o LEFT JOIN FETCH o.customer WHERE o.deleted = false ORDER BY o.id DESC")
 	List<Order> findAllForBoard();
 
 	@Query("""
@@ -61,7 +64,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 		)
 		FROM Order o
 		LEFT JOIN o.customer c
-		WHERE o.status IN :statuses
+		WHERE o.deleted = false AND o.status IN :statuses
 		ORDER BY CASE o.status
 		  WHEN com.example.waterrefillapijava.model.OrderStatus.queued THEN 1
 		  WHEN com.example.waterrefillapijava.model.OrderStatus.processing THEN 2
@@ -71,13 +74,39 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 		""")
 	List<BoardOrderResponse> findAllForBoardGrouped(@Param("statuses") List<OrderStatus> statuses);
 
-	List<Order> findByStatusNotOrderByCreatedAtDesc(OrderStatus status);
+	List<Order> findByStatusNotAndDeletedFalseOrderByCreatedAtDesc(OrderStatus status);
 
-	long countByStatusNot(OrderStatus status);
+	long countByStatusNotAndDeletedFalse(OrderStatus status);
 
-	@Query("SELECT COALESCE(SUM(o.bottlesReturnedAtDelivery), 0) FROM Order o")
+	@Query("SELECT COALESCE(SUM(o.bottlesReturnedAtDelivery), 0) FROM Order o WHERE o.deleted = false")
 	Integer sumBottlesReturned();
 
-	@Query("SELECT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.status = :status ORDER BY o.createdAt DESC")
+	@Query("SELECT o FROM Order o LEFT JOIN FETCH o.items i LEFT JOIN FETCH i.product WHERE o.deleted = false AND o.status = :status ORDER BY o.createdAt DESC")
 	List<Order> findByStatusWithItems(@Param("status") OrderStatus status);
+
+	boolean existsByCustomerId(Long customerId);
+
+	// Unfiltered (used by reports/enrichment that need all historical data)
+	Page<Order> findByStatus(OrderStatus status, Pageable pageable);
+
+	// Archive (deleted = true)
+	Page<Order> findByDeletedTrue(Pageable pageable);
+
+	Page<Order> findByOrderTypeAndDeletedTrue(OrderType orderType, Pageable pageable);
+
+	Page<Order> findByStatusAndDeletedTrue(OrderStatus status, Pageable pageable);
+
+	Page<Order> findByOrderTypeAndStatusAndDeletedTrue(OrderType orderType, OrderStatus status, Pageable pageable);
+
+	@Query("SELECT o FROM Order o WHERE o.deleted = true AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
+	Page<Order> findBySearchAndDeletedTrue(@Param("search") String search, Pageable pageable);
+
+	@Query("SELECT o FROM Order o WHERE o.deleted = true AND o.orderType = :orderType AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
+	Page<Order> findByOrderTypeAndSearchAndDeletedTrue(@Param("orderType") OrderType orderType, @Param("search") String search, Pageable pageable);
+
+	@Query("SELECT o FROM Order o WHERE o.deleted = true AND o.status = :status AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
+	Page<Order> findByStatusAndSearchAndDeletedTrue(@Param("status") OrderStatus status, @Param("search") String search, Pageable pageable);
+
+	@Query("SELECT o FROM Order o WHERE o.deleted = true AND o.orderType = :orderType AND o.status = :status AND (o.customer.name LIKE %:search% OR CAST(o.id AS string) LIKE %:search%)")
+	Page<Order> findByOrderTypeAndStatusAndSearchAndDeletedTrue(@Param("orderType") OrderType orderType, @Param("status") OrderStatus status, @Param("search") String search, Pageable pageable);
 }

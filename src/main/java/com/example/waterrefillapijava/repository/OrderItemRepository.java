@@ -17,5 +17,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 	@Query("SELECT oi FROM OrderItem oi JOIN FETCH oi.product WHERE oi.order.id = :orderId")
 	List<OrderItem> findByOrderIdWithProduct(@Param("orderId") Long orderId);
 
+	boolean existsByProductId(Long productId);
+
 	void deleteByOrderId(Long orderId);
 }
