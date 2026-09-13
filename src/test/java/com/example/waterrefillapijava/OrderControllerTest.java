@@ -239,7 +239,7 @@ class OrderControllerTest extends AbstractIntegrationTest {
 	}
 
 	@Test
-	void deleteOrderRestoresStock() throws Exception {
+	void deleteOrderSoftDeletes() throws Exception {
 		final String token = loginAsTestUser();
 
 		final Long productId = extractId(createProduct(token, Map.of(
@@ -273,7 +273,11 @@ class OrderControllerTest extends AbstractIntegrationTest {
 
 		mockMvc.perform(get("/api/v1/products/" + productId)
 				.header("Authorization", "Bearer " + token))
-			.andExpect(jsonPath("$.stock_quantity").value(20));
+			.andExpect(jsonPath("$.stock_quantity").value(15));
+
+		mockMvc.perform(get("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isNotFound());
 	}
 
 	@Test
@@ -381,5 +385,289 @@ class OrderControllerTest extends AbstractIntegrationTest {
 			.andExpect(jsonPath("$.data").isArray())
 			.andExpect(jsonPath("$.current_page").value(1))
 			.andExpect(jsonPath("$.per_page").value(2));
+	}
+
+	@Test
+	void getDeletedOrderReturns404() throws Exception {
+		final String token = loginAsTestUser();
+
+		final Long productId = extractId(createProduct(token, Map.of(
+			"name", "Deleted Check Product",
+			"type", "accessory",
+			"price", 10.0,
+			"stock_quantity", 50,
+			"reorder_point", 5
+		)));
+
+		final String orderResult = mockMvc.perform(post("/api/v1/orders")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"order_type", "walk_in",
+					"payment_method", "cash",
+					"items", java.util.List.of(
+						Map.of("product_id", productId, "quantity", 2, "unit_price", 10.0)
+					)
+				))))
+			.andReturn().getResponse().getContentAsString();
+		final Long orderId = objectMapper.readTree(orderResult).get("id").asLong();
+
+		mockMvc.perform(delete("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void advanceStatusOnDeletedOrderReturns404() throws Exception {
+		final String token = loginAsTestUser();
+
+		final Long productId = extractId(createProduct(token, Map.of(
+			"name", "Deleted Status Product",
+			"type", "accessory",
+			"price", 10.0,
+			"stock_quantity", 50,
+			"reorder_point", 5
+		)));
+
+		final String orderResult = mockMvc.perform(post("/api/v1/orders")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"order_type", "walk_in",
+					"payment_method", "cash",
+					"items", java.util.List.of(
+						Map.of("product_id", productId, "quantity", 1, "unit_price", 10.0)
+					)
+				))))
+			.andReturn().getResponse().getContentAsString();
+		final Long orderId = objectMapper.readTree(orderResult).get("id").asLong();
+
+		mockMvc.perform(delete("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(post("/api/v1/orders/" + orderId + "/status")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of("status", "processing"))))
+			.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void recordDeliveryOnDeletedOrderReturns404() throws Exception {
+		final String token = loginAsTestUser();
+
+		final Long productId = extractId(createProduct(token, Map.of(
+			"name", "Deleted Delivery Product",
+			"type", "accessory",
+			"price", 10.0,
+			"stock_quantity", 50,
+			"reorder_point", 5
+		)));
+
+		final String orderResult = mockMvc.perform(post("/api/v1/orders")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"order_type", "delivery",
+					"payment_method", "cash",
+					"delivery_address", "789 Test St",
+					"items", java.util.List.of(
+						Map.of("product_id", productId, "quantity", 1, "unit_price", 10.0)
+					)
+				))))
+			.andReturn().getResponse().getContentAsString();
+		final Long orderId = objectMapper.readTree(orderResult).get("id").asLong();
+
+		mockMvc.perform(delete("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(post("/api/v1/orders/" + orderId + "/delivery")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"delivery_status", "delivered",
+					"bottles_returned", 0,
+					"cash_collected", 10.0
+				))))
+			.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void listDeletedOrdersReturnsArchived() throws Exception {
+		final String token = loginAsTestUser();
+
+		final Long productId = extractId(createProduct(token, Map.of(
+			"name", "Deleted List Product",
+			"type", "accessory",
+			"price", 10.0,
+			"stock_quantity", 50,
+			"reorder_point", 5
+		)));
+
+		final String orderResult = mockMvc.perform(post("/api/v1/orders")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"order_type", "walk_in",
+					"payment_method", "cash",
+					"items", java.util.List.of(
+						Map.of("product_id", productId, "quantity", 2, "unit_price", 10.0)
+					)
+				))))
+			.andReturn().getResponse().getContentAsString();
+		final Long orderId = objectMapper.readTree(orderResult).get("id").asLong();
+
+		mockMvc.perform(delete("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/v1/orders/deleted")
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data").isArray())
+			.andExpect(jsonPath("$.data.length()").value(1))
+			.andExpect(jsonPath("$.data[0].id").value(orderId));
+	}
+
+	@Test
+	void restoreOrder() throws Exception {
+		final String token = loginAsTestUser();
+
+		final Long productId = extractId(createProduct(token, Map.of(
+			"name", "Restore Product",
+			"type", "accessory",
+			"price", 10.0,
+			"stock_quantity", 50,
+			"reorder_point", 5
+		)));
+
+		final String orderResult = mockMvc.perform(post("/api/v1/orders")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"order_type", "walk_in",
+					"payment_method", "cash",
+					"items", java.util.List.of(
+						Map.of("product_id", productId, "quantity", 2, "unit_price", 10.0)
+					)
+				))))
+			.andReturn().getResponse().getContentAsString();
+		final Long orderId = objectMapper.readTree(orderResult).get("id").asLong();
+
+		mockMvc.perform(delete("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(post("/api/v1/orders/" + orderId + "/restore")
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+	}
+
+	@Test
+	void permanentDeleteOrder() throws Exception {
+		final String token = loginAsTestUser();
+
+		final Long productId = extractId(createProduct(token, Map.of(
+			"name", "Permanent Delete Product",
+			"type", "accessory",
+			"price", 10.0,
+			"stock_quantity", 50,
+			"reorder_point", 5
+		)));
+
+		final String orderResult = mockMvc.perform(post("/api/v1/orders")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"order_type", "walk_in",
+					"payment_method", "cash",
+					"items", java.util.List.of(
+						Map.of("product_id", productId, "quantity", 2, "unit_price", 10.0)
+					)
+				))))
+			.andReturn().getResponse().getContentAsString();
+		final Long orderId = objectMapper.readTree(orderResult).get("id").asLong();
+
+		mockMvc.perform(delete("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(delete("/api/v1/orders/" + orderId + "/permanent")
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/v1/orders/" + orderId)
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void restoreNonArchivedOrderReturns409() throws Exception {
+		final String token = loginAsTestUser();
+
+		final Long productId = extractId(createProduct(token, Map.of(
+			"name", "Restore Non Archived Product",
+			"type", "accessory",
+			"price", 10.0,
+			"stock_quantity", 50,
+			"reorder_point", 5
+		)));
+
+		final String orderResult = mockMvc.perform(post("/api/v1/orders")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"order_type", "walk_in",
+					"payment_method", "cash",
+					"items", java.util.List.of(
+						Map.of("product_id", productId, "quantity", 2, "unit_price", 10.0)
+					)
+				))))
+			.andReturn().getResponse().getContentAsString();
+		final Long orderId = objectMapper.readTree(orderResult).get("id").asLong();
+
+		mockMvc.perform(post("/api/v1/orders/" + orderId + "/restore")
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isConflict());
+	}
+
+	@Test
+	void permanentDeleteNonArchivedOrderReturns409() throws Exception {
+		final String token = loginAsTestUser();
+
+		final Long productId = extractId(createProduct(token, Map.of(
+			"name", "Permanent Delete Non Archived Product",
+			"type", "accessory",
+			"price", 10.0,
+			"stock_quantity", 50,
+			"reorder_point", 5
+		)));
+
+		final String orderResult = mockMvc.perform(post("/api/v1/orders")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(Map.of(
+					"order_type", "walk_in",
+					"payment_method", "cash",
+					"items", java.util.List.of(
+						Map.of("product_id", productId, "quantity", 2, "unit_price", 10.0)
+					)
+				))))
+			.andReturn().getResponse().getContentAsString();
+		final Long orderId = objectMapper.readTree(orderResult).get("id").asLong();
+
+		mockMvc.perform(delete("/api/v1/orders/" + orderId + "/permanent")
+				.header("Authorization", "Bearer " + token))
+			.andExpect(status().isConflict());
 	}
 }

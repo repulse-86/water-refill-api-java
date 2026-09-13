@@ -76,4 +76,31 @@ public class MeterReadingController {
 
 		return ResponseEntity.ok(new MessageResponse("Meter reading deleted successfully."));
 	}
+
+	@GetMapping("/deleted")
+	public ResponseEntity<PageResponse<MeterReadingResponse>> listDeleted(
+		@RequestParam(defaultValue = "1") int page,
+		@RequestParam(defaultValue = "10") int size,
+		@RequestParam(required = false) String search
+	) {
+		return ResponseEntity.ok(meterReadingService.archiveList(page, size, search));
+	}
+
+	@PostMapping("/{id}/restore")
+	public ResponseEntity<MeterReadingResponse> restore(@PathVariable final Long id) {
+		meterReadingService.restore(id);
+
+		log.info("Meter reading restored: id={}", id);
+
+		return ResponseEntity.ok(meterReadingService.findById(id));
+	}
+
+	@DeleteMapping("/{id}/permanent")
+	public ResponseEntity<?> permanentDelete(@PathVariable final Long id) {
+		meterReadingService.permanentDelete(id);
+
+		log.info("Meter reading permanently deleted: id={}", id);
+
+		return ResponseEntity.ok(new com.example.waterrefillapijava.dto.MessageResponse("Meter reading permanently deleted successfully."));
+	}
 }

@@ -202,6 +202,41 @@ public class ProductController {
 		);
 	}
 
+	@GetMapping("/deleted")
+	public ResponseEntity<PageResponse<ProductResponse>> listDeleted(
+		@RequestParam(defaultValue = "1") int page,
+		@RequestParam(defaultValue = "10") int size,
+		@RequestParam(required = false) String search,
+		@RequestParam(required = false) ProductType type
+	) {
+		final Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.max(1, Math.min(100, size)),
+			Sort.by("id").descending());
+
+		final Page<Product> products = productService.archiveList(search, type, pageable);
+
+		return ResponseEntity.ok(toPageResponse(products));
+	}
+
+	@PostMapping("/{id}/restore")
+	public ResponseEntity<ProductResponse> restore(@PathVariable final Long id) {
+		productService.restore(id);
+
+		log.info("Product restored: id={}", id);
+
+		return ResponseEntity.ok(toProductResponse(productService.findById(id)));
+	}
+
+	@DeleteMapping("/{id}/permanent")
+	public ResponseEntity<?> permanentDelete(@PathVariable final Long id) {
+		final String imageUrl = productService.permanentDelete(id);
+
+		fileStorageService.delete(imageUrl);
+
+		log.info("Product permanently deleted: id={}", id);
+
+		return ResponseEntity.ok(new MessageResponse("Product permanently deleted successfully."));
+	}
+
 	private ProductResponse toProductResponse(final Product product) {
 		return new ProductResponse(
 			product.getId(),
@@ -211,7 +246,8 @@ public class ProductController {
 			product.getPrice(),
 			product.getStockQuantity(),
 			product.getReorderPoint(),
-			product.getImage()
+			product.getImage(),
+			product.getDeletedAt() != null ? product.getDeletedAt().toString() : null
 		);
 	}
 }
