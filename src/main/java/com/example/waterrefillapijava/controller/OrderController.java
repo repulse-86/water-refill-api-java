@@ -25,6 +25,7 @@ import com.example.waterrefillapijava.dto.StatusRequest;
 import com.example.waterrefillapijava.model.Order;
 import com.example.waterrefillapijava.model.OrderStatus;
 import com.example.waterrefillapijava.model.OrderType;
+import com.example.waterrefillapijava.service.OrderFulfillmentService;
 import com.example.waterrefillapijava.service.OrderService;
 
 import jakarta.validation.Valid;
@@ -38,6 +39,7 @@ import lombok.extern.slf4j.Slf4j;
 public class OrderController {
 
 	private final OrderService orderService;
+	private final OrderFulfillmentService orderFulfillmentService;
 
 	@GetMapping
 	public ResponseEntity<PageResponse<OrderResponse>> list(
@@ -106,7 +108,7 @@ public class OrderController {
 		@PathVariable final Long id,
 		@Valid @RequestBody final StatusRequest request
 	) {
-		final Order order = orderService.advanceStatus(id, request.status());
+		final Order order = orderFulfillmentService.advanceStatus(id, request.status());
 
 		log.info("Order status advanced: id={}, status={}", order.getId(), order.getStatus());
 
@@ -118,7 +120,7 @@ public class OrderController {
 		@PathVariable final Long id,
 		@Valid @RequestBody final DeliveryRequest request
 	) {
-		final Order order = orderService.recordDelivery(
+		final Order order = orderFulfillmentService.recordDelivery(
 			id, request.deliveryStatus(), request.bottlesReturned(), request.cashCollected()
 		);
 
