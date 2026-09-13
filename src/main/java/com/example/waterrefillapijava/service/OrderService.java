@@ -2,9 +2,13 @@ package com.example.waterrefillapijava.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import com.example.waterrefillapijava.exception.ConflictException;
 
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
@@ -18,6 +22,7 @@ import com.example.waterrefillapijava.dto.OrderItemResponse;
 import com.example.waterrefillapijava.dto.OrderResponse;
 import com.example.waterrefillapijava.exception.FieldValidationException;
 import com.example.waterrefillapijava.exception.NotFoundException;
+import com.example.waterrefillapijava.model.Customer;
 import com.example.waterrefillapijava.model.Customer;
 import com.example.waterrefillapijava.model.DeliveryStatus;
 import com.example.waterrefillapijava.model.Order;
@@ -77,9 +82,8 @@ public class OrderService {
 
 	@Transactional(readOnly = true)
 	public Order findById(final Long id) {
-		final Order order = orderRepository.findById(id)
-			.orElseThrow(() -> new NotFoundException("Order not found."));
-		if (order.isDeleted()) {
+		final Order order = orderRepository.findByIdWithDetails(id);
+		if (order == null || order.isDeleted()) {
 			throw new NotFoundException("Order not found.");
 		}
 		return order;
@@ -132,9 +136,17 @@ public class OrderService {
 		orderRepository.save(order);
 
 		BigDecimal computedTotal = BigDecimal.ZERO;
+		final List<Long> productIds = items.stream()
+			.map(OrderItemRequest::productId)
+			.toList();
+		final Map<Long, Product> productsById = productRepository.findAllById(productIds).stream()
+			.collect(Collectors.toMap(Product::getId, p -> p));
+
 		for (OrderItemRequest item : items) {
-			final Product product = productRepository.findById(item.productId())
-				.orElseThrow(() -> new NotFoundException("Product not found."));
+			final Product product = productsById.get(item.productId());
+			if (product == null) {
+				throw new NotFoundException("Product not found.");
+			}
 
 			if (product.getStockQuantity() < item.quantity()) {
 				throw FieldValidationException.builder()
@@ -205,10 +217,18 @@ public class OrderService {
 		orderItemRepository.findByOrderId(id).forEach(orderItemRepository::delete);
 		order.getItems().clear();
 
+		final List<Long> productIds = items.stream()
+			.map(OrderItemRequest::productId)
+			.toList();
+		final Map<Long, Product> productsById = productRepository.findAllById(productIds).stream()
+			.collect(Collectors.toMap(Product::getId, p -> p));
+
 		BigDecimal computedTotal = BigDecimal.ZERO;
 		for (OrderItemRequest item : items) {
-			final Product product = productRepository.findById(item.productId())
-				.orElseThrow(() -> new NotFoundException("Product not found."));
+			final Product product = productsById.get(item.productId());
+			if (product == null) {
+				throw new NotFoundException("Product not found.");
+			}
 
 			final BigDecimal unitPrice = product.getPrice();
 
@@ -240,8 +260,10 @@ public class OrderService {
 		@CacheEvict(value = "report:reconciliation", allEntries = true)
 	})
 	public void delete(final Long id) {
-		final Order order = orderRepository.findById(id)
-			.orElseThrow(() -> new NotFoundException("Order not found."));
+		final Order order = orderRepository.findByIdWithDetails(id);
+		if (order == null) {
+			throw new NotFoundException("Order not found.");
+		}
 		if (order.isDeleted()) {
 			return;
 		}
@@ -280,6 +302,62 @@ public class OrderService {
 	}
 
 	@Transactional(readOnly = true)
+	public List<OrderResponse> toResponses(final List<Order> orders) {
+		if (orders.isEmpty()) {
+			return List.of();
+		}
+
+		final List<Long> orderIds = orders.stream().map(Order::getId).toList();
+
+		final Map<Long, List<OrderItem>> itemsByOrderId = orderItemRepository.findByOrderIdInWithProduct(orderIds).stream()
+			.collect(Collectors.groupingBy(oi -> oi.getOrder().getId()));
+
+		final Set<Long> customerIds = orders.stream()
+			.map(o -> o.getCustomer() != null ? o.getCustomer().getId() : null)
+			.filter(id -> id != null)
+			.collect(Collectors.toSet());
+		final Map<Long, Customer> customersById = customerIds.isEmpty()
+			? Map.of()
+			: customerRepository.findAllById(customerIds).stream()
+				.collect(Collectors.toMap(Customer::getId, c -> c));
+
+		return orders.stream()
+			.map(o -> {
+				final List<OrderItem> items = itemsByOrderId.getOrDefault(o.getId(), List.of());
+				final List<OrderItemResponse> itemResponses = items.stream()
+					.map(this::toItemResponse)
+					.toList();
+
+				final Long custId = o.getCustomer() != null ? o.getCustomer().getId() : null;
+				final Customer customer = custId != null ? customersById.get(custId) : null;
+
+				return new OrderResponse(
+					o.getId(),
+					customer != null ? customer.getId() : null,
+					customer != null ? customer.getName() : "Walk-in",
+					o.getOrderType(),
+					o.getStatus(),
+					o.getPaymentMethod(),
+					o.getTotalAmount(),
+					o.getAmountPaid(),
+					o.getChangeReturned(),
+					o.getDeliveryFee(),
+					o.getNotes(),
+					o.getDeliveryAddress(),
+					o.getDeliveryStatus(),
+					o.getDeliveredAt(),
+					o.getBottlesReturnedAtDelivery(),
+					o.getCashCollectedAtDelivery(),
+					itemResponses,
+					o.getCreatedAt(),
+					o.getModifiedAt(),
+					o.getDeletedAt() != null ? o.getDeletedAt().toString() : null
+				);
+			})
+			.toList();
+	}
+
+	@Transactional(readOnly = true)
 	public Page<Order> archiveList(String search, OrderType orderType, OrderStatus status, Pageable pageable) {
 		if (search != null && orderType != null && status != null) {
 			return orderRepository.findByOrderTypeAndStatusAndSearchAndDeletedTrue(orderType, status, search, pageable);
@@ -314,10 +392,9 @@ public class OrderService {
 		@CacheEvict(value = "report:reconciliation", allEntries = true)
 	})
 	public void restore(final Long id) {
-		final Order order = orderRepository.findById(id)
-			.orElseThrow(() -> new NotFoundException("Order not found."));
-		if (!order.isDeleted()) {
-			throw new com.example.waterrefillapijava.exception.ConflictException("Order is not archived.");
+		final Order order = orderRepository.findByIdWithDetails(id);
+		if (order == null || !order.isDeleted()) {
+			throw new ConflictException("Order is not archived.");
 		}
 		order.setDeleted(false);
 		order.setDeletedAt(null);
@@ -333,12 +410,11 @@ public class OrderService {
 		@CacheEvict(value = "report:reconciliation", allEntries = true)
 	})
 	public void permanentDelete(final Long id) {
-		final Order order = orderRepository.findById(id)
-			.orElseThrow(() -> new NotFoundException("Order not found."));
-		if (!order.isDeleted()) {
+		final Order order = orderRepository.findByIdWithDetails(id);
+		if (order == null || !order.isDeleted()) {
 			throw new com.example.waterrefillapijava.exception.ConflictException("Order must be archived before permanent deletion.");
 		}
-		// Reverse effects (Option B: reversal at permanent delete time)
+
 		stockEffectService.restoreStockForOrder(order);
 		orderItemRepository.findByOrderId(id).forEach(orderItemRepository::delete);
 		orderRepository.deleteById(id);

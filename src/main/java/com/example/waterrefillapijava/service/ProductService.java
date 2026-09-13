@@ -2,6 +2,8 @@ package com.example.waterrefillapijava.service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
@@ -213,9 +215,18 @@ public class ProductService {
 	}
 
 	private void saveComponents(Product product, List<ComponentItem> components) {
+		final List<Long> componentIds = components.stream()
+			.map(ComponentItem::componentId)
+			.toList();
+		final Map<Long, Product> productsById = productRepository.findAllById(componentIds).stream()
+			.collect(Collectors.toMap(Product::getId, p -> p));
+
+		final List<ProductComponent> toSave = new java.util.ArrayList<>();
 		for (var item : components) {
-			final Product componentProduct = productRepository.findById(item.componentId())
-				.orElseThrow(() -> new NotFoundException("Component product not found."));
+			final Product componentProduct = productsById.get(item.componentId());
+			if (componentProduct == null) {
+				throw new NotFoundException("Component product not found.");
+			}
 
 			if (product.getId().equals(componentProduct.getId())) {
 				throw FieldValidationException.builder()
@@ -227,13 +238,13 @@ public class ProductService {
 				throw new ConflictException("The component has already been added to this product.");
 			}
 
-			final ProductComponent pc = ProductComponent.builder()
+			toSave.add(ProductComponent.builder()
 				.product(product)
 				.component(componentProduct)
 				.quantity(item.quantity())
-				.build();
-
-			productComponentRepository.save(pc);
+				.build());
 		}
+
+		productComponentRepository.saveAll(toSave);
 	}
 }

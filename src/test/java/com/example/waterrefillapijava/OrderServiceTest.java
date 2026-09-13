@@ -84,7 +84,7 @@ class OrderServiceTest {
 
 	@Test
 	void findByIdNotFoundThrows() {
-		when(orderRepository.findById(999L)).thenReturn(Optional.empty());
+		when(orderRepository.findByIdWithDetails(999L)).thenReturn(null);
 
 		assertThrows(NotFoundException.class, () -> orderService.findById(999L));
 	}
@@ -92,7 +92,7 @@ class OrderServiceTest {
 	@Test
 	void findByIdReturnsOrder() {
 		final Order order = Order.builder().id(1L).orderType(OrderType.walk_in).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		final Order result = orderService.findById(1L);
 
@@ -103,7 +103,7 @@ class OrderServiceTest {
 	void createWalkInOrderComputesTotalAndDeductsStock() {
 		final Product product = createProduct(10L, "Water", new BigDecimal("25"), 50);
 		when(customerRepository.findById(1L)).thenReturn(Optional.of(createCustomer(1L, "Juan", 0)));
-		when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+		when(productRepository.findAllById(List.of(10L))).thenReturn(List.of(product));
 		when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
 			final Order o = inv.getArgument(0);
 			o.setId(1L);
@@ -137,7 +137,7 @@ class OrderServiceTest {
 	@Test
 	void createOrderWithInsufficientStockThrows() {
 		final Product product = createProduct(10L, "Water", new BigDecimal("25"), 2);
-		when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+		when(productRepository.findAllById(List.of(10L))).thenReturn(List.of(product));
 
 		final OrderItemRequest item = new OrderItemRequest(10L, 5, null);
 
@@ -154,7 +154,7 @@ class OrderServiceTest {
 		final Customer customer = createCustomer(1L, "Juan", 0);
 		final Product product = createProduct(10L, "Water", new BigDecimal("25"), 50);
 		when(customerRepository.findById(1L)).thenReturn(Optional.of(customer));
-		when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+		when(productRepository.findAllById(List.of(10L))).thenReturn(List.of(product));
 		when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
 			final Order o = inv.getArgument(0);
 			o.setId(1L);
@@ -182,7 +182,7 @@ class OrderServiceTest {
 			.totalAmount(new BigDecimal("25"))
 			.customer(null)
 			.build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		orderService.delete(1L);
 
@@ -195,7 +195,7 @@ class OrderServiceTest {
 
 	@Test
 	void deleteNotFoundThrows() {
-		when(orderRepository.findById(999L)).thenReturn(Optional.empty());
+		when(orderRepository.findByIdWithDetails(999L)).thenReturn(null);
 
 		assertThrows(NotFoundException.class, () -> orderService.delete(999L));
 	}
@@ -248,7 +248,7 @@ class OrderServiceTest {
 			.deleted(true)
 			.deletedAt(LocalDateTime.now())
 			.build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		orderService.restore(1L);
 
@@ -267,7 +267,7 @@ class OrderServiceTest {
 			.totalAmount(new BigDecimal("25"))
 			.deleted(false)
 			.build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		assertThrows(ConflictException.class, () -> orderService.restore(1L));
 		verify(orderRepository, never()).save(order);
@@ -284,7 +284,7 @@ class OrderServiceTest {
 			.deleted(true)
 			.deletedAt(LocalDateTime.now())
 			.build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 		when(orderItemRepository.findByOrderId(1L)).thenReturn(List.of());
 
 		orderService.permanentDelete(1L);
@@ -302,7 +302,7 @@ class OrderServiceTest {
 			.totalAmount(new BigDecimal("25"))
 			.deleted(false)
 			.build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		assertThrows(ConflictException.class, () -> orderService.permanentDelete(1L));
 		verify(orderRepository, never()).deleteById(anyLong());
@@ -318,7 +318,7 @@ class OrderServiceTest {
 			.deleted(true)
 			.deletedAt(LocalDateTime.now())
 			.build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		orderService.delete(1L);
 
@@ -334,7 +334,7 @@ class OrderServiceTest {
 			.status(OrderStatus.queued)
 			.deleted(true)
 			.build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		assertThrows(NotFoundException.class, () -> orderService.findById(1L));
 	}

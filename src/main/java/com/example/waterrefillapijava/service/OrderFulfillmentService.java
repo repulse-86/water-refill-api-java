@@ -69,10 +69,8 @@ public class OrderFulfillmentService {
 		@CacheEvict(value = "report:reconciliation", allEntries = true)
 	})
 	public Order advanceStatus(final Long id, final OrderStatus newStatus) {
-		final Order order = orderRepository.findById(id)
-			.orElseThrow(() -> new NotFoundException("Order not found."));
-
-		if (order.isDeleted()) {
+		final Order order = orderRepository.findByIdWithDetails(id);
+		if (order == null || order.isDeleted()) {
 			throw new NotFoundException("Order not found.");
 		}
 
@@ -109,10 +107,8 @@ public class OrderFulfillmentService {
 	})
 	public Order recordDelivery(final Long id, final DeliveryStatus deliveryStatus,
 			final Integer bottlesReturned, final BigDecimal cashCollected) {
-		final Order order = orderRepository.findById(id)
-			.orElseThrow(() -> new NotFoundException("Order not found."));
-
-		if (order.isDeleted()) {
+		final Order order = orderRepository.findByIdWithDetails(id);
+		if (order == null || order.isDeleted()) {
 			throw new NotFoundException("Order not found.");
 		}
 
