@@ -1,5 +1,6 @@
 package com.example.waterrefillapijava.service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -31,12 +32,21 @@ public class ProductComponentService {
 	public Page<ProductComponentResponse> list(Long productId, String search, Pageable pageable) {
 		validateProductExists(productId);
 
-		final Page<ProductComponent> page;
+		final List<ProductComponent> results;
 		if (search != null && !search.isBlank()) {
-			page = productComponentRepository.findByProductIdAndComponent_NameContainingIgnoreCase(productId, search, pageable);
+			results = productComponentRepository.findByProductIdAndComponentNameJoinFetchComponent(productId, search);
 		} else {
-			page = productComponentRepository.findByProductId(productId, pageable);
+			results = productComponentRepository.findByProductIdJoinFetchComponent(productId);
 		}
+
+		final int start = (int) pageable.getOffset();
+		final int end = Math.min(start + pageable.getPageSize(), results.size());
+		final List<ProductComponent> pageContent = start < results.size()
+			? results.subList(start, end)
+			: List.of();
+
+		final Page<ProductComponent> page = new org.springframework.data.domain.PageImpl<>(
+			pageContent, pageable, results.size());
 
 		return page.map(this::toResponse);
 	}

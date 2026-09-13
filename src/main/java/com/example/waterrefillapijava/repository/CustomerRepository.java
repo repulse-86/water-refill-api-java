@@ -34,6 +34,9 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 	@Query("SELECT c FROM Customer c WHERE c.outstandingBalance > 0 OR c.bottleDebt > 0 ORDER BY c.outstandingBalance DESC")
 	List<Customer> findWithDebt();
 
+	@Query("SELECT c FROM Customer c WHERE c.deleted = false AND (c.outstandingBalance > 0 OR c.bottleDebt > 0) AND (:search IS NULL OR LOWER(c.name) LIKE CONCAT('%', LOWER(:search), '%') OR LOWER(c.phone) LIKE CONCAT('%', LOWER(:search), '%')) ORDER BY c.outstandingBalance DESC")
+	Page<Customer> findWithDebtPaged(@Param("search") String search, Pageable pageable);
+
 	@Modifying
 	@Query("UPDATE Customer c SET c.outstandingBalance = c.outstandingBalance + :amount WHERE c.id = :id")
 	void adjustBalance(@Param("id") Long id, @Param("amount") BigDecimal amount);
@@ -42,14 +45,12 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 	@Query("UPDATE Customer c SET c.bottleDebt = c.bottleDebt - :qty WHERE c.id = :id")
 	void decrementBottleDebt(@Param("id") Long id, @Param("qty") int qty);
 
-	// User-facing (deleted = false)
 	Page<Customer> findByDeletedFalse(Pageable pageable);
 
 	Page<Customer> findByNameContainingIgnoreCaseAndDeletedFalse(String name, Pageable pageable);
 
 	long countBySubscriberStatusAndDeletedFalse(String subscriberStatus);
 
-	// Archive (deleted = true)
 	Page<Customer> findByDeletedTrue(Pageable pageable);
 
 	Page<Customer> findByNameContainingIgnoreCaseAndDeletedTrue(String name, Pageable pageable);
