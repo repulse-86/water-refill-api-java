@@ -49,6 +49,13 @@ public class Customer {
 	@Builder.Default
 	private BigDecimal outstandingBalance = BigDecimal.ZERO;
 
+	@Builder.Default
+	@Column(nullable = false)
+	private boolean deleted = false;
+
+	@Column(name = "deleted_at")
+	private LocalDateTime deletedAt;
+
 	@Column(name = "created_at")
 	private LocalDateTime createdAt;
 

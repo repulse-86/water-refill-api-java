@@ -38,6 +38,13 @@ public class MeterReading {
 	@Column(columnDefinition = "TEXT")
 	private String notes;
 
+	@Builder.Default
+	@Column(nullable = false)
+	private boolean deleted = false;
+
+	@Column(name = "deleted_at")
+	private LocalDateTime deletedAt;
+
 	@Column(name = "created_at")
 	private LocalDateTime createdAt;
 

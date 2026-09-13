@@ -54,6 +54,13 @@ public class Product {
 	@Column(columnDefinition = "TEXT")
 	private String image;
 
+	@Builder.Default
+	@Column(nullable = false)
+	private boolean deleted = false;
+
+	@Column(name = "deleted_at")
+	private LocalDateTime deletedAt;
+
 	@Column(name = "created_at")
 	private LocalDateTime createdAt;
 
