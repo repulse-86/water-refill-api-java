@@ -93,6 +93,38 @@ public class CustomerController {
 		return ResponseEntity.ok(new MessageResponse("Customer deleted successfully."));
 	}
 
+	@GetMapping("/deleted")
+	public ResponseEntity<PageResponse<CustomerResponse>> listDeleted(
+		@RequestParam(defaultValue = "1") int page,
+		@RequestParam(defaultValue = "10") int size,
+		@RequestParam(required = false) String search
+	) {
+		final Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.max(1, Math.min(100, size)),
+			Sort.by("id").descending());
+
+		final Page<Customer> customers = customerService.archiveList(search, pageable);
+
+		return ResponseEntity.ok(toPageResponse(customers));
+	}
+
+	@PostMapping("/{id}/restore")
+	public ResponseEntity<CustomerResponse> restore(@PathVariable final Long id) {
+		customerService.restore(id);
+
+		log.info("Customer restored: id={}", id);
+
+		return ResponseEntity.ok(toCustomerResponse(customerService.findById(id)));
+	}
+
+	@DeleteMapping("/{id}/permanent")
+	public ResponseEntity<?> permanentDelete(@PathVariable final Long id) {
+		customerService.permanentDelete(id);
+
+		log.info("Customer permanently deleted: id={}", id);
+
+		return ResponseEntity.ok(new MessageResponse("Customer permanently deleted successfully."));
+	}
+
 	@PostMapping("/{id}/settle")
 	public ResponseEntity<CustomerResponse> settle(
 		@PathVariable final Long id,
@@ -126,7 +158,8 @@ public class CustomerController {
 			customer.getEmail(),
 			customer.getSubscriberStatus(),
 			customer.getBottleDebt(),
-			customer.getOutstandingBalance()
+			customer.getOutstandingBalance(),
+			customer.getDeletedAt() != null ? customer.getDeletedAt().toString() : null
 		);
 	}
 }

@@ -129,6 +129,40 @@ public class OrderController {
 		return ResponseEntity.ok(orderService.toResponse(order));
 	}
 
+	@GetMapping("/deleted")
+	public ResponseEntity<PageResponse<OrderResponse>> listDeleted(
+		@RequestParam(defaultValue = "1") int page,
+		@RequestParam(defaultValue = "10") int size,
+		@RequestParam(required = false) String search,
+		@RequestParam(required = false) OrderType orderType,
+		@RequestParam(required = false) OrderStatus status
+	) {
+		final Pageable pageable = PageRequest.of(Math.max(0, page - 1), Math.max(1, Math.min(100, size)),
+			Sort.by("id").descending());
+
+		final Page<Order> orders = orderService.archiveList(search, orderType, status, pageable);
+
+		return ResponseEntity.ok(toPageResponse(orders));
+	}
+
+	@PostMapping("/{id}/restore")
+	public ResponseEntity<OrderResponse> restore(@PathVariable final Long id) {
+		orderService.restore(id);
+
+		log.info("Order restored: id={}", id);
+
+		return ResponseEntity.ok(orderService.toResponse(orderService.findById(id)));
+	}
+
+	@DeleteMapping("/{id}/permanent")
+	public ResponseEntity<?> permanentDelete(@PathVariable final Long id) {
+		orderService.permanentDelete(id);
+
+		log.info("Order permanently deleted: id={}", id);
+
+		return ResponseEntity.ok(new MessageResponse("Order permanently deleted successfully."));
+	}
+
 	private PageResponse<OrderResponse> toPageResponse(final Page<Order> page) {
 		return new PageResponse<>(
 			page.getContent().stream().map(orderService::toResponse).toList(),
