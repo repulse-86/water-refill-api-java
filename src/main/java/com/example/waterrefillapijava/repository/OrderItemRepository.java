@@ -1,5 +1,6 @@
 package com.example.waterrefillapijava.repository;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,4 +21,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 	boolean existsByProductId(Long productId);
 
 	void deleteByOrderId(Long orderId);
+
+	@Query("SELECT oi FROM OrderItem oi JOIN FETCH oi.product WHERE oi.order.id IN :orderIds")
+	List<OrderItem> findByOrderIdInWithProduct(@Param("orderIds") Collection<Long> orderIds);
 }

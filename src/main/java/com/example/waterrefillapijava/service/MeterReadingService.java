@@ -6,7 +6,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
@@ -19,19 +23,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.waterrefillapijava.dto.MeterReadingResponse;
 import com.example.waterrefillapijava.dto.PageResponse;
+import com.example.waterrefillapijava.dto.projection.GallonsByDate;
+import com.example.waterrefillapijava.dto.projection.MeterReadingValue;
 import com.example.waterrefillapijava.exception.ConflictException;
 import com.example.waterrefillapijava.exception.FieldValidationException;
 import com.example.waterrefillapijava.exception.NotFoundException;
 import com.example.waterrefillapijava.model.MeterReading;
-import com.example.waterrefillapijava.model.Order;
-import com.example.waterrefillapijava.model.OrderItem;
-import com.example.waterrefillapijava.model.OrderStatus;
-import com.example.waterrefillapijava.model.Product;
-import com.example.waterrefillapijava.model.ProductType;
 import com.example.waterrefillapijava.repository.MeterReadingRepository;
-import com.example.waterrefillapijava.repository.OrderItemRepository;
 import com.example.waterrefillapijava.repository.OrderRepository;
-import com.example.waterrefillapijava.repository.ProductRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -43,8 +42,6 @@ public class MeterReadingService {
 
 	private final MeterReadingRepository meterReadingRepository;
 	private final OrderRepository orderRepository;
-	private final OrderItemRepository orderItemRepository;
-	private final ProductRepository productRepository;
 
 	@Transactional(readOnly = true)
 	public PageResponse<MeterReadingResponse> listAll(int page, int size, String search) {
@@ -61,15 +58,14 @@ public class MeterReadingService {
 			pageResult = meterReadingRepository.findByDeletedFalse(pageable);
 		}
 
-		final List<MeterReading> all = meterReadingRepository.findAll(Sort.by(Sort.Direction.DESC, "readingDate"))
-			.stream()
-			.filter(r -> !r.isDeleted())
-			.toList();
-		final List<Order> completedOrders = orderRepository.findByStatus(OrderStatus.completed, Pageable.unpaged()).getContent();
-		final List<Product> products = productRepository.findAll();
+		final List<GallonsByDate> gallonsByDate = orderRepository.aggregateGallonsByDate();
+		final List<MeterReadingValue> allReadings = meterReadingRepository.findReadingValuesByDeletedFalse();
+		final TreeMap<LocalDate, MeterReadingValue> sortedReadings = buildSortedReadings(allReadings);
+		final Map<LocalDate, BigDecimal> gallonsMap = gallonsByDate.stream()
+			.collect(Collectors.toMap(GallonsByDate::localDate, GallonsByDate::gallons));
 
 		final List<MeterReadingResponse> responses = pageResult.getContent().stream()
-			.map(r -> enrichOne(r, all, completedOrders, products))
+			.map(r -> enrichOne(r, sortedReadings, gallonsMap))
 			.toList();
 
 		return new PageResponse<>(
@@ -88,8 +84,14 @@ public class MeterReadingService {
 		if (reading.isDeleted()) {
 			throw new NotFoundException("Meter reading not found.");
 		}
-		final List<MeterReading> all = meterReadingRepository.findAll();
-		return enrichOne(reading, all);
+
+		final MeterReadingValue previous = meterReadingRepository
+			.findPreviousReadingValues(reading.getReadingDate()).stream().findFirst().orElse(null);
+		final List<GallonsByDate> gallonsByDate = orderRepository.aggregateGallonsByDate();
+		final Map<LocalDate, BigDecimal> gallonsMap = gallonsByDate.stream()
+			.collect(Collectors.toMap(GallonsByDate::localDate, GallonsByDate::gallons));
+
+		return enrichOneSingle(reading, previous, gallonsMap);
 	}
 
 	@Transactional
@@ -118,8 +120,13 @@ public class MeterReadingService {
 
 		meterReadingRepository.save(reading);
 
-		final List<MeterReading> all = meterReadingRepository.findAll();
-		return enrichOne(reading, all);
+		final MeterReadingValue previous = meterReadingRepository
+			.findPreviousReadingValues(readingDate).stream().findFirst().orElse(null);
+		final List<GallonsByDate> gallonsByDate = orderRepository.aggregateGallonsByDate();
+		final Map<LocalDate, BigDecimal> gallonsMap = gallonsByDate.stream()
+			.collect(Collectors.toMap(GallonsByDate::localDate, GallonsByDate::gallons));
+
+		return enrichOneSingle(reading, previous, gallonsMap);
 	}
 
 	@Transactional
@@ -149,8 +156,13 @@ public class MeterReadingService {
 
 		meterReadingRepository.save(reading);
 
-		final List<MeterReading> all = meterReadingRepository.findAll();
-		return enrichOne(reading, all);
+		final MeterReadingValue previous = meterReadingRepository
+			.findPreviousReadingValues(readingDate).stream().findFirst().orElse(null);
+		final List<GallonsByDate> gallonsByDate = orderRepository.aggregateGallonsByDate();
+		final Map<LocalDate, BigDecimal> gallonsMap = gallonsByDate.stream()
+			.collect(Collectors.toMap(GallonsByDate::localDate, GallonsByDate::gallons));
+
+		return enrichOneSingle(reading, previous, gallonsMap);
 	}
 
 	@Transactional
@@ -159,10 +171,8 @@ public class MeterReadingService {
 		@CacheEvict("report:reconciliation")
 	})
 	public void delete(Long id) {
-		if (!meterReadingRepository.existsById(id)) {
-			throw new NotFoundException("Meter reading not found.");
-		}
-		final MeterReading reading = meterReadingRepository.findById(id).orElseThrow();
+		final MeterReading reading = meterReadingRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Meter reading not found."));
 		reading.setDeleted(true);
 		reading.setDeletedAt(LocalDateTime.now());
 		meterReadingRepository.save(reading);
@@ -183,12 +193,14 @@ public class MeterReadingService {
 			pageResult = meterReadingRepository.findByDeletedTrue(pageable);
 		}
 
-		final List<MeterReading> all = meterReadingRepository.findAll(Sort.by(Sort.Direction.DESC, "readingDate"));
-		final List<Order> completedOrders = orderRepository.findByStatus(OrderStatus.completed, Pageable.unpaged()).getContent();
-		final List<Product> products = productRepository.findAll();
+		final List<GallonsByDate> gallonsByDate = orderRepository.aggregateGallonsByDate();
+		final List<MeterReadingValue> allReadings = meterReadingRepository.findReadingValuesByDeletedFalse();
+		final TreeMap<LocalDate, MeterReadingValue> sortedReadings = buildSortedReadings(allReadings);
+		final Map<LocalDate, BigDecimal> gallonsMap = gallonsByDate.stream()
+			.collect(Collectors.toMap(GallonsByDate::localDate, GallonsByDate::gallons));
 
 		final List<MeterReadingResponse> responses = pageResult.getContent().stream()
-			.map(r -> enrichOne(r, all, completedOrders, products))
+			.map(r -> enrichOne(r, sortedReadings, gallonsMap))
 			.toList();
 
 		return new PageResponse<>(
@@ -244,20 +256,38 @@ public class MeterReadingService {
 		}
 	}
 
-	private MeterReadingResponse enrichOne(MeterReading reading, List<MeterReading> all) {
-		final List<Order> completedOrders = orderRepository.findByStatus(OrderStatus.completed, Pageable.unpaged()).getContent();
-		final List<Product> products = productRepository.findAll();
-		return enrichOne(reading, all, completedOrders, products);
+	private TreeMap<LocalDate, MeterReadingValue> buildSortedReadings(List<MeterReadingValue> readings) {
+		final TreeMap<LocalDate, MeterReadingValue> sorted = new TreeMap<>(Comparator.reverseOrder());
+		readings.forEach(r -> sorted.put(r.readingDate(), r));
+		return sorted;
 	}
 
-	private MeterReadingResponse enrichOne(MeterReading reading, List<MeterReading> all,
-			List<Order> completedOrders, List<Product> products) {
+	private MeterReadingResponse enrichOne(MeterReading reading,
+			TreeMap<LocalDate, MeterReadingValue> sortedReadings,
+			Map<LocalDate, BigDecimal> gallonsMap) {
 
-		final MeterReading previous = getPreviousReading(all, reading.getReadingDate());
-		final BigDecimal expectedVolume = computeExpectedVolume(completedOrders, products, reading.getReadingDate());
+		final MeterReadingValue previous = sortedReadings.lowerEntry(reading.getReadingDate()) != null
+			? sortedReadings.lowerEntry(reading.getReadingDate()).getValue()
+			: null;
+
+		return buildResponse(reading, previous, gallonsMap);
+	}
+
+	private MeterReadingResponse enrichOneSingle(MeterReading reading,
+			MeterReadingValue previous,
+			Map<LocalDate, BigDecimal> gallonsMap) {
+
+		return buildResponse(reading, previous, gallonsMap);
+	}
+
+	private MeterReadingResponse buildResponse(MeterReading reading,
+			MeterReadingValue previous,
+			Map<LocalDate, BigDecimal> gallonsMap) {
+
+		final BigDecimal expectedVolume = gallonsMap.getOrDefault(reading.getReadingDate(), BigDecimal.ZERO);
 		final BigDecimal actualThroughput = previous == null
 			? null
-			: reading.getMeterValue().subtract(previous.getMeterValue());
+			: reading.getMeterValue().subtract(previous.meterValue());
 		final BigDecimal variance = actualThroughput == null
 			? null
 			: actualThroughput.subtract(expectedVolume).setScale(2, RoundingMode.HALF_UP);
@@ -271,7 +301,7 @@ public class MeterReadingService {
 			reading.getReadingDate().toString(),
 			reading.getMeterValue(),
 			reading.getNotes(),
-			previous == null ? null : previous.getMeterValue(),
+			previous == null ? null : previous.meterValue(),
 			expectedVolume,
 			actualThroughput,
 			variance,
@@ -281,37 +311,6 @@ public class MeterReadingService {
 			reading.getModifiedAt() != null ? reading.getModifiedAt().toString() : null,
 			reading.getDeletedAt() != null ? reading.getDeletedAt().toString() : null
 		);
-	}
-
-	private MeterReading getPreviousReading(List<MeterReading> readings, LocalDate date) {
-		return readings.stream()
-			.filter(r -> r.getReadingDate().isBefore(date))
-			.sorted((MeterReading a, MeterReading b) -> b.getReadingDate().compareTo(a.getReadingDate()))
-			.findFirst()
-			.orElse(null);
-	}
-
-	private BigDecimal computeExpectedVolume(List<Order> completedOrders, List<Product> products, LocalDate date) {
-		final java.util.Map<Long, Product> productById = new java.util.HashMap<>();
-		for (Product p : products) {
-			if (p.getType() == ProductType.water_refill) {
-				productById.put(p.getId(), p);
-			}
-		}
-
-		BigDecimal total = BigDecimal.ZERO;
-		for (Order order : completedOrders) {
-			if (order.getCreatedAt() != null && order.getCreatedAt().toLocalDate().equals(date)) {
-				final List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
-				for (OrderItem item : items) {
-					final Product product = productById.get(item.getProduct().getId());
-					if (product != null && product.getVolumeGallons() != null) {
-						total = total.add(product.getVolumeGallons().multiply(BigDecimal.valueOf(item.getQuantity())));
-					}
-				}
-			}
-		}
-		return total;
 	}
 
 	private boolean isFlagged(BigDecimal expectedVolume, BigDecimal actualThroughput, BigDecimal variance) {

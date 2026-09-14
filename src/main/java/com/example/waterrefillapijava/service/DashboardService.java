@@ -3,10 +3,11 @@ package com.example.waterrefillapijava.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
@@ -21,16 +22,15 @@ import com.example.waterrefillapijava.dto.DashboardResponse.PendingOrder;
 import com.example.waterrefillapijava.dto.DashboardResponse.QuickStats;
 import com.example.waterrefillapijava.dto.DashboardResponse.TodaySummary;
 import com.example.waterrefillapijava.dto.DashboardResponse.TopProduct;
-import com.example.waterrefillapijava.model.MeterReading;
-import com.example.waterrefillapijava.model.Order;
-import com.example.waterrefillapijava.model.OrderItem;
+import com.example.waterrefillapijava.dto.projection.DailySalesAggregate;
+import com.example.waterrefillapijava.dto.projection.GallonsByDate;
+import com.example.waterrefillapijava.dto.projection.MeterReadingValue;
+import com.example.waterrefillapijava.dto.projection.PaymentMixAggregate;
+import com.example.waterrefillapijava.dto.projection.ProductSalesAggregate;
 import com.example.waterrefillapijava.model.OrderStatus;
-import com.example.waterrefillapijava.model.PaymentMethod;
 import com.example.waterrefillapijava.model.Product;
-import com.example.waterrefillapijava.model.ProductType;
 import com.example.waterrefillapijava.repository.CustomerRepository;
 import com.example.waterrefillapijava.repository.MeterReadingRepository;
-import com.example.waterrefillapijava.repository.OrderItemRepository;
 import com.example.waterrefillapijava.repository.OrderRepository;
 import com.example.waterrefillapijava.repository.ProductRepository;
 
@@ -41,7 +41,6 @@ import lombok.RequiredArgsConstructor;
 public class DashboardService {
 
 	private final OrderRepository orderRepository;
-	private final OrderItemRepository orderItemRepository;
 	private final ProductRepository productRepository;
 	private final CustomerRepository customerRepository;
 	private final MeterReadingRepository meterReadingRepository;
@@ -51,115 +50,98 @@ public class DashboardService {
 	public DashboardResponse getDashboard() {
 		final LocalDate today = LocalDate.now();
 
-		final List<Order> completedOrders = orderRepository.findByStatusAndDeletedFalse(OrderStatus.completed, Pageable.unpaged()).getContent();
-		final List<Order> pendingOrdersList = orderRepository.findByStatusNotAndDeletedFalseOrderByCreatedAtDesc(OrderStatus.completed);
-		final List<Product> lowStockProducts = productRepository.findLowStock();
-		final List<Product> products = productRepository.findAll();
-		final List<MeterReading> readings = meterReadingRepository.findAll();
+		final List<DailySalesAggregate> dailySales = orderRepository.aggregateDailySales();
+		final List<GallonsByDate> gallonsByDate = orderRepository.aggregateGallonsByDate();
+		final List<ProductSalesAggregate> productPerformance = orderRepository.aggregateProductPerformance();
+		final List<PaymentMixAggregate> paymentMixData = orderRepository.aggregatePaymentMix();
 
-		final TodaySummary todaySummary = computeTodaySales(completedOrders, today);
+		final Map<LocalDate, BigDecimal> gallonsMap = gallonsByDate.stream()
+			.collect(Collectors.toMap(GallonsByDate::localDate, GallonsByDate::gallons));
+
+		final TodaySummary todaySummary = buildTodaySummary(dailySales, gallonsMap, today);
 		final int activeCustomerCount = (int) customerRepository.countBySubscriberStatus("active");
 		final int pendingOrderCount = (int) orderRepository.countByStatusNotAndDeletedFalse(OrderStatus.completed);
 		final int bottlesReturned = orderRepository.sumBottlesReturned();
-		final QuickStats quickStats = computeQuickStats(readings, completedOrders, products, bottlesReturned, activeCustomerCount, pendingOrderCount, today);
-		final List<PendingOrder> pendingOrders = computePendingOrders(pendingOrdersList);
-		final List<LowStockProduct> lowStock = computeLowStock(lowStockProducts);
-		final List<DailySalesRow> salesTrend = computeDailySales(completedOrders, products).stream()
-			.sorted((a, b) -> a.date().compareTo(b.date()))
-			.toList();
-		final int trendLimit = Math.min(salesTrend.size(), 7);
-		final List<DailySalesRow> lastSeven = salesTrend.subList(Math.max(0, salesTrend.size() - trendLimit), salesTrend.size());
-		final List<TopProduct> topProducts = computeProductPerformance(completedOrders, products).stream()
-			.limit(5)
-			.toList();
-		final List<PaymentMix> paymentMix = computePaymentMix(completedOrders);
+
+		final QuickStats quickStats = buildQuickStats(today, gallonsMap, bottlesReturned, activeCustomerCount, pendingOrderCount);
+		final List<PendingOrder> pendingOrders = buildPendingOrders();
+		final List<LowStockProduct> lowStock = buildLowStock();
+		final List<DailySalesRow> salesTrend = buildSalesTrend(dailySales, gallonsMap);
+		final List<TopProduct> topProducts = buildTopProducts(productPerformance);
+		final List<PaymentMix> paymentMix = buildPaymentMix(paymentMixData);
 
 		return new DashboardResponse(
 			todaySummary,
 			quickStats,
 			pendingOrders,
 			lowStock,
-			lastSeven,
+			salesTrend,
 			topProducts,
 			paymentMix
 		);
 	}
 
-	private TodaySummary computeTodaySales(List<Order> completedOrders, LocalDate today) {
-		BigDecimal revenue = BigDecimal.ZERO;
-		BigDecimal cash = BigDecimal.ZERO;
-		BigDecimal eWallet = BigDecimal.ZERO;
-		BigDecimal credit = BigDecimal.ZERO;
-		int orderCount = 0;
-		BigDecimal gallons = BigDecimal.ZERO;
+	private TodaySummary buildTodaySummary(
+		List<DailySalesAggregate> dailySales,
+		Map<LocalDate, BigDecimal> gallonsMap,
+		LocalDate today
+	) {
 
-		final Map<Long, Product> productMap = new HashMap<>();
-		for (Order order : completedOrders) {
-			if (order.getCreatedAt() != null && order.getCreatedAt().toLocalDate().equals(today)) {
-				orderCount++;
-				revenue = revenue.add(order.getTotalAmount());
-				switch (order.getPaymentMethod()) {
-					case cash -> cash = cash.add(order.getTotalAmount());
-					case e_wallet -> eWallet = eWallet.add(order.getTotalAmount());
-					case credit -> credit = credit.add(order.getTotalAmount());
-				}
-				for (OrderItem item : orderItemRepository.findByOrderId(order.getId())) {
-					final Product product = productMap.computeIfAbsent(item.getProduct().getId(), id -> item.getProduct());
-					if (product.getType() == ProductType.water_refill && product.getVolumeGallons() != null) {
-						gallons = gallons.add(product.getVolumeGallons().multiply(BigDecimal.valueOf(item.getQuantity())));
-					}
-				}
-			}
+		final DailySalesAggregate todayRow = dailySales.stream()
+			.filter(d -> d.localDate().equals(today))
+			.findFirst()
+			.orElse(null);
+
+		final BigDecimal gallons = gallonsMap.getOrDefault(today, BigDecimal.ZERO);
+
+		if (todayRow == null) {
+			return new TodaySummary(
+				today.toString(),
+				BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+				0,
+				BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+				BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+				BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
+				gallons.setScale(2, RoundingMode.HALF_UP)
+			);
 		}
 
 		return new TodaySummary(
 			today.toString(),
-			revenue.setScale(2, RoundingMode.HALF_UP),
-			orderCount,
-			cash.setScale(2, RoundingMode.HALF_UP),
-			eWallet.setScale(2, RoundingMode.HALF_UP),
-			credit.setScale(2, RoundingMode.HALF_UP),
+			todayRow.revenue().setScale(2, RoundingMode.HALF_UP),
+			todayRow.orderCount().intValue(),
+			todayRow.cash().setScale(2, RoundingMode.HALF_UP),
+			todayRow.eWallet().setScale(2, RoundingMode.HALF_UP),
+			todayRow.credit().setScale(2, RoundingMode.HALF_UP),
 			gallons.setScale(2, RoundingMode.HALF_UP)
 		);
 	}
 
-	private QuickStats computeQuickStats(List<MeterReading> readings, List<Order> completedOrders,
-			List<Product> products, int bottlesReturned, int activeCustomers, int pendingOrderCount, LocalDate today) {
+	private QuickStats buildQuickStats(
+		LocalDate today,
+		Map<LocalDate,
+		BigDecimal> gallonsMap,
+		int bottlesReturned,
+		int activeCustomers,
+		int pendingOrderCount
+	) {
 
-		final BigDecimal gallonsPumped = computeGallonsPumped(readings, completedOrders, products, today);
+		final List<MeterReadingValue> readings = meterReadingRepository.findReadingValuesByDeletedFalse();
+		BigDecimal gallonsPumped;
 
-		return new QuickStats(gallonsPumped, bottlesReturned, activeCustomers, pendingOrderCount);
-	}
-
-	private BigDecimal computeGallonsPumped(List<MeterReading> readings, List<Order> completedOrders,
-			List<Product> products, LocalDate today) {
-		final List<MeterReading> sorted = new ArrayList<>(readings);
-		sorted.sort((a, b) -> a.getReadingDate().compareTo(b.getReadingDate()));
-
-		if (sorted.size() >= 2) {
-			final MeterReading latest = sorted.get(sorted.size() - 1);
-			final MeterReading previous = sorted.get(sorted.size() - 2);
-			return latest.getMeterValue().subtract(previous.getMeterValue()).setScale(2, RoundingMode.HALF_UP);
+		if (readings.size() >= 2) {
+			final MeterReadingValue latest = readings.get(0);
+			final MeterReadingValue previous = readings.get(1);
+			gallonsPumped = latest.meterValue().subtract(previous.meterValue());
+		} else {
+			gallonsPumped = gallonsMap.getOrDefault(today, BigDecimal.ZERO);
 		}
 
-		final Map<Long, Product> productMap = new HashMap<>();
-		BigDecimal total = BigDecimal.ZERO;
-		for (Order order : completedOrders) {
-			if (order.getCreatedAt() != null
-					&& order.getCreatedAt().toLocalDate().equals(today)) {
-				for (OrderItem item : orderItemRepository.findByOrderId(order.getId())) {
-					final Product product = productMap.computeIfAbsent(item.getProduct().getId(), id -> item.getProduct());
-					if (product.getType() == ProductType.water_refill && product.getVolumeGallons() != null) {
-						total = total.add(product.getVolumeGallons().multiply(BigDecimal.valueOf(item.getQuantity())));
-					}
-				}
-			}
-		}
-		return total.setScale(2, RoundingMode.HALF_UP);
+		return new QuickStats(gallonsPumped.setScale(2, RoundingMode.HALF_UP), bottlesReturned, activeCustomers, pendingOrderCount);
 	}
 
-	private List<PendingOrder> computePendingOrders(List<Order> pendingOrders) {
-		return pendingOrders.stream()
+	private List<PendingOrder> buildPendingOrders() {
+		return orderRepository.findByStatusNotAndDeletedFalseOrderByCreatedAtDesc(OrderStatus.completed).stream()
 			.map(o -> new PendingOrder(
 				o.getId(),
 				o.getCustomer() != null ? o.getCustomer().getName() : "Walk-in",
@@ -171,10 +153,8 @@ public class DashboardService {
 			.toList();
 	}
 
-	private List<LowStockProduct> computeLowStock(List<Product> products) {
-		return products.stream()
-			.filter(p -> p.getStockQuantity() <= p.getReorderPoint())
-			.sorted((a, b) -> Integer.compare(a.getStockQuantity(), b.getStockQuantity()))
+	private List<LowStockProduct> buildLowStock() {
+		return productRepository.findLowStock().stream()
 			.map(p -> new LowStockProduct(
 				p.getId(),
 				p.getName(),
@@ -185,117 +165,54 @@ public class DashboardService {
 			.toList();
 	}
 
-	private List<DailySalesRow> computeDailySales(List<Order> completedOrders, List<Product> products) {
-		final Map<Long, Product> productMap = new HashMap<>();
-		products.forEach(p -> productMap.put(p.getId(), p));
+	private List<DailySalesRow> buildSalesTrend(List<DailySalesAggregate> dailySales,
+			Map<LocalDate, BigDecimal> gallonsMap) {
 
-		final Map<String, SalesAccumulator> byDay = new HashMap<>();
-
-		for (Order order : completedOrders) {
-			if (order.getCreatedAt() == null) continue;
-			final String date = order.getCreatedAt().toLocalDate().toString();
-			final SalesAccumulator row = byDay.computeIfAbsent(date, SalesAccumulator::new);
-
-			row.orderCount++;
-			row.revenue = row.revenue.add(order.getTotalAmount());
-			switch (order.getPaymentMethod()) {
-				case cash -> row.cash = row.cash.add(order.getTotalAmount());
-				case e_wallet -> row.eWallet = row.eWallet.add(order.getTotalAmount());
-				case credit -> row.credit = row.credit.add(order.getTotalAmount());
-			}
-
-			for (OrderItem item : orderItemRepository.findByOrderId(order.getId())) {
-				final Product product = productMap.get(item.getProduct().getId());
-				if (product != null && product.getType() == ProductType.water_refill && product.getVolumeGallons() != null) {
-					row.gallons = row.gallons.add(product.getVolumeGallons().multiply(BigDecimal.valueOf(item.getQuantity())));
-				}
-			}
-		}
-
-		return byDay.values().stream()
-			.map(SalesAccumulator::toRow)
-			.sorted((a, b) -> b.date().compareTo(a.date()))
+		return dailySales.stream()
+			.sorted(Comparator.comparing(DailySalesAggregate::localDate))
+			.map(d -> new DailySalesRow(
+				d.localDate().toString(),
+				d.localDate().toString(),
+				d.orderCount().intValue(),
+				d.revenue().setScale(2, RoundingMode.HALF_UP),
+				d.cash().setScale(2, RoundingMode.HALF_UP),
+				d.eWallet().setScale(2, RoundingMode.HALF_UP),
+				d.credit().setScale(2, RoundingMode.HALF_UP),
+				gallonsMap.getOrDefault(d.localDate(), BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP)
+			))
 			.toList();
 	}
 
-	private static class SalesAccumulator {
-		String date;
-		int orderCount;
-		BigDecimal revenue = BigDecimal.ZERO;
-		BigDecimal cash = BigDecimal.ZERO;
-		BigDecimal eWallet = BigDecimal.ZERO;
-		BigDecimal credit = BigDecimal.ZERO;
-		BigDecimal gallons = BigDecimal.ZERO;
-
-		SalesAccumulator(String date) { this.date = date; }
-
-		DailySalesRow toRow() {
-			return new DailySalesRow(
-				date, date, orderCount,
-				revenue.setScale(2, RoundingMode.HALF_UP),
-				cash.setScale(2, RoundingMode.HALF_UP),
-				eWallet.setScale(2, RoundingMode.HALF_UP),
-				credit.setScale(2, RoundingMode.HALF_UP),
-				gallons.setScale(2, RoundingMode.HALF_UP)
-			);
-		}
-	}
-
-	private List<TopProduct> computeProductPerformance(List<Order> completedOrders, List<Product> products) {
-		final Map<Long, Product> productMap = new HashMap<>();
-		products.forEach(p -> productMap.put(p.getId(), p));
-
-		final record ProductAcc(String name, String type, int units, BigDecimal revenue) {
-			ProductAcc add(int qty, BigDecimal sub) {
-				return new ProductAcc(name, type, units + qty, revenue.add(sub));
-			}
-		}
-
-		final Map<Long, ProductAcc> byId = new HashMap<>();
-		for (Order order : completedOrders) {
-			for (OrderItem item : orderItemRepository.findByOrderId(order.getId())) {
-				final Long pid = item.getProduct().getId();
-				final Product product = productMap.get(pid);
-				final String name = product != null ? product.getName() : item.getProduct().getName();
-				final String type = product != null ? product.getType().name() : "unknown";
-				byId.merge(pid, new ProductAcc(name, type, item.getQuantity(), item.getSubtotal()),
-					(existing, incoming) -> existing.add(incoming.units, incoming.revenue));
-			}
-		}
-
-		final BigDecimal totalRevenue = byId.values().stream()
-			.map(ProductAcc::revenue)
+	private List<TopProduct> buildTopProducts(List<ProductSalesAggregate> productPerformance) {
+		final BigDecimal totalRevenue = productPerformance.stream()
+			.map(ProductSalesAggregate::revenue)
 			.reduce(BigDecimal.ZERO, BigDecimal::add);
 
-		return byId.entrySet().stream()
-			.sorted((a, b) -> b.getValue().revenue().compareTo(a.getValue().revenue()))
-			.map(e -> {
-				final ProductAcc acc = e.getValue();
+		return productPerformance.stream()
+			.limit(5)
+			.map(p -> {
 				final BigDecimal sharePct = totalRevenue.compareTo(BigDecimal.ZERO) > 0
-					? acc.revenue().multiply(new BigDecimal("100")).divide(totalRevenue, 1, RoundingMode.HALF_UP)
+					? p.revenue().multiply(new BigDecimal("100")).divide(totalRevenue, 1, RoundingMode.HALF_UP)
 					: BigDecimal.ZERO;
-				return new TopProduct(e.getKey(), acc.name(), acc.revenue(), acc.units(), sharePct);
+				return new TopProduct(p.productId(), p.productName(), p.revenue(), (int) p.units(), sharePct);
 			})
 			.toList();
 	}
 
-	private List<PaymentMix> computePaymentMix(List<Order> completedOrders) {
-		BigDecimal cash = BigDecimal.ZERO;
-		BigDecimal eWallet = BigDecimal.ZERO;
-		BigDecimal credit = BigDecimal.ZERO;
-
-		for (Order order : completedOrders) {
-			switch (order.getPaymentMethod()) {
-				case cash -> cash = cash.add(order.getTotalAmount());
-				case e_wallet -> eWallet = eWallet.add(order.getTotalAmount());
-				case credit -> credit = credit.add(order.getTotalAmount());
-			}
-		}
-
+	private List<PaymentMix> buildPaymentMix(List<PaymentMixAggregate> paymentMixData) {
 		return List.of(
-			new PaymentMix("cash", "Cash", cash.setScale(2, RoundingMode.HALF_UP)),
-			new PaymentMix("e_wallet", "E-Wallet", eWallet.setScale(2, RoundingMode.HALF_UP)),
-			new PaymentMix("credit", "Credit", credit.setScale(2, RoundingMode.HALF_UP))
+			new PaymentMix("cash", "Cash", paymentMixData.stream()
+				.filter(p -> "cash".equals(p.paymentMethod()))
+				.map(PaymentMixAggregate::total)
+				.findFirst().orElse(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP)),
+			new PaymentMix("e_wallet", "E-Wallet", paymentMixData.stream()
+				.filter(p -> "e_wallet".equals(p.paymentMethod()))
+				.map(PaymentMixAggregate::total)
+				.findFirst().orElse(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP)),
+			new PaymentMix("credit", "Credit", paymentMixData.stream()
+				.filter(p -> "credit".equals(p.paymentMethod()))
+				.map(PaymentMixAggregate::total)
+				.findFirst().orElse(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP))
 		);
 	}
 }

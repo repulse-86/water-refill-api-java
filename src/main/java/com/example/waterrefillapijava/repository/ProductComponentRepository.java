@@ -1,5 +1,7 @@
 package com.example.waterrefillapijava.repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -22,6 +24,15 @@ public interface ProductComponentRepository extends JpaRepository<ProductCompone
 	Optional<ProductComponent> findByProductIdAndComponentId(Long productId, Long componentId);
 
 	boolean existsByProductIdAndComponentId(Long productId, Long componentId);
+
+	@Query("SELECT pc FROM ProductComponent pc JOIN FETCH pc.component WHERE pc.product.id = :productId")
+	List<ProductComponent> findByProductIdJoinFetchComponent(@Param("productId") Long productId);
+
+	@Query("SELECT pc FROM ProductComponent pc JOIN FETCH pc.component WHERE pc.product.id = :productId AND LOWER(pc.component.name) LIKE CONCAT('%', LOWER(:name), '%')")
+	List<ProductComponent> findByProductIdAndComponentNameJoinFetchComponent(@Param("productId") Long productId, @Param("name") String name);
+
+	@Query("SELECT pc FROM ProductComponent pc JOIN FETCH pc.component WHERE pc.product.id IN :productIds")
+	List<ProductComponent> findByProductIdInJoinFetchComponent(@Param("productIds") Collection<Long> productIds);
 
 	void deleteByProductIdAndComponentId(Long productId, Long componentId);
 
