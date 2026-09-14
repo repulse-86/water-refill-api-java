@@ -44,6 +44,8 @@ public record OrderResponse(
 	@JsonProperty("created_at")
 	LocalDateTime createdAt,
 	@JsonProperty("modified_at")
-	LocalDateTime modifiedAt
+	LocalDateTime modifiedAt,
+	@JsonProperty("deleted_at")
+	String deletedAt
 ) {
 }

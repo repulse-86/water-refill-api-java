@@ -23,6 +23,9 @@ public record ProductResponse(
 	@JsonProperty("reorder_point")
 	Integer reorderPoint,
 
-	String image
+	String image,
+
+	@JsonProperty("deleted_at")
+	String deletedAt
 ) {
 }
