@@ -11,8 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.example.waterrefillapijava.exception.ConflictException;
 import com.example.waterrefillapijava.exception.NotFoundException;
+import java.time.LocalDateTime;
+
 import com.example.waterrefillapijava.model.Customer;
 import com.example.waterrefillapijava.repository.CustomerRepository;
+import com.example.waterrefillapijava.repository.OrderRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -21,19 +24,24 @@ import lombok.RequiredArgsConstructor;
 public class CustomerService {
 
 	private final CustomerRepository customerRepository;
+	private final OrderRepository orderRepository;
 
 	@Transactional(readOnly = true)
 	public Page<Customer> search(String search, Pageable pageable) {
 		if (search != null && !search.isBlank()) {
-			return customerRepository.findByNameContainingIgnoreCase(search, pageable);
+			return customerRepository.findByNameContainingIgnoreCaseAndDeletedFalse(search, pageable);
 		}
-		return customerRepository.findAll(pageable);
+		return customerRepository.findByDeletedFalse(pageable);
 	}
 
 	@Transactional(readOnly = true)
 	public Customer findById(Long id) {
-		return customerRepository.findById(id)
+		final Customer customer = customerRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Customer not found."));
+		if (customer.isDeleted()) {
+			throw new NotFoundException("Customer not found.");
+		}
+		return customer;
 	}
 
 	@Transactional
@@ -84,11 +92,19 @@ public class CustomerService {
 	}
 
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:debt-aging")
+	})
 	public void delete(Long id) {
-		if (!customerRepository.existsById(id)) {
-			throw new NotFoundException("Customer not found.");
+		final Customer customer = customerRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Customer not found."));
+		if (customer.isDeleted()) {
+			throw new ConflictException("Customer is already archived.");
 		}
-		customerRepository.deleteById(id);
+		customer.setDeleted(true);
+		customer.setDeletedAt(LocalDateTime.now());
+		customerRepository.save(customer);
 	}
 
 	@Transactional
@@ -108,5 +124,48 @@ public class CustomerService {
 		customer.setOutstandingBalance(newBalance);
 
 		return customerRepository.save(customer);
+	}
+
+	@Transactional(readOnly = true)
+	public Page<Customer> archiveList(String search, Pageable pageable) {
+		if (search != null && !search.isBlank()) {
+			return customerRepository.findByNameContainingIgnoreCaseAndDeletedTrue(search, pageable);
+		}
+		return customerRepository.findByDeletedTrue(pageable);
+	}
+
+	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:debt-aging")
+	})
+	public void restore(Long id) {
+		final Customer customer = customerRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Customer not found."));
+		if (!customer.isDeleted()) {
+			throw new ConflictException("Customer is not archived.");
+		}
+		if (customerRepository.existsByPhoneAndIdNot(customer.getPhone(), id)) {
+			throw new ConflictException("A customer with this phone already exists.");
+		}
+		if (customerRepository.existsByEmailAndIdNot(customer.getEmail(), id)) {
+			throw new ConflictException("A customer with this email already exists.");
+		}
+		customer.setDeleted(false);
+		customer.setDeletedAt(null);
+		customerRepository.save(customer);
+	}
+
+	@Transactional
+	public void permanentDelete(Long id) {
+		final Customer customer = customerRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Customer not found."));
+		if (!customer.isDeleted()) {
+			throw new ConflictException("Customer must be archived before permanent deletion.");
+		}
+		if (orderRepository.existsByCustomerId(id)) {
+			throw new ConflictException("Cannot permanently delete: customer has orders.");
+		}
+		customerRepository.deleteById(id);
 	}
 }

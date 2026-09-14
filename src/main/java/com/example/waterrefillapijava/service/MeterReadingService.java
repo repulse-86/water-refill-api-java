@@ -3,6 +3,7 @@ package com.example.waterrefillapijava.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -55,12 +56,15 @@ public class MeterReadingService {
 
 		final Page<MeterReading> pageResult;
 		if (search != null && !search.isBlank()) {
-			pageResult = meterReadingRepository.findBySearch(search, pageable);
+			pageResult = meterReadingRepository.findBySearchAndDeletedFalse(search, pageable);
 		} else {
-			pageResult = meterReadingRepository.findAll(pageable);
+			pageResult = meterReadingRepository.findByDeletedFalse(pageable);
 		}
 
-		final List<MeterReading> all = meterReadingRepository.findAll(Sort.by(Sort.Direction.DESC, "readingDate"));
+		final List<MeterReading> all = meterReadingRepository.findAll(Sort.by(Sort.Direction.DESC, "readingDate"))
+			.stream()
+			.filter(r -> !r.isDeleted())
+			.toList();
 		final List<Order> completedOrders = orderRepository.findByStatus(OrderStatus.completed, Pageable.unpaged()).getContent();
 		final List<Product> products = productRepository.findAll();
 
@@ -81,6 +85,9 @@ public class MeterReadingService {
 	public MeterReadingResponse findById(Long id) {
 		final MeterReading reading = meterReadingRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Meter reading not found."));
+		if (reading.isDeleted()) {
+			throw new NotFoundException("Meter reading not found.");
+		}
 		final List<MeterReading> all = meterReadingRepository.findAll();
 		return enrichOne(reading, all);
 	}
@@ -155,6 +162,70 @@ public class MeterReadingService {
 		if (!meterReadingRepository.existsById(id)) {
 			throw new NotFoundException("Meter reading not found.");
 		}
+		final MeterReading reading = meterReadingRepository.findById(id).orElseThrow();
+		reading.setDeleted(true);
+		reading.setDeletedAt(LocalDateTime.now());
+		meterReadingRepository.save(reading);
+	}
+
+	@Transactional(readOnly = true)
+	public PageResponse<MeterReadingResponse> archiveList(int page, int size, String search) {
+		final Pageable pageable = PageRequest.of(
+			Math.max(0, page - 1),
+			Math.max(1, Math.min(100, size)),
+			Sort.by(Sort.Direction.DESC, "readingDate")
+		);
+
+		final Page<MeterReading> pageResult;
+		if (search != null && !search.isBlank()) {
+			pageResult = meterReadingRepository.findBySearchAndDeletedTrue(search, pageable);
+		} else {
+			pageResult = meterReadingRepository.findByDeletedTrue(pageable);
+		}
+
+		final List<MeterReading> all = meterReadingRepository.findAll(Sort.by(Sort.Direction.DESC, "readingDate"));
+		final List<Order> completedOrders = orderRepository.findByStatus(OrderStatus.completed, Pageable.unpaged()).getContent();
+		final List<Product> products = productRepository.findAll();
+
+		final List<MeterReadingResponse> responses = pageResult.getContent().stream()
+			.map(r -> enrichOne(r, all, completedOrders, products))
+			.toList();
+
+		return new PageResponse<>(
+			responses,
+			pageResult.getNumber() + 1,
+			pageResult.getSize(),
+			pageResult.getTotalElements(),
+			pageResult.getTotalPages()
+		);
+	}
+
+	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:reconciliation")
+	})
+	public void restore(Long id) {
+		final MeterReading reading = meterReadingRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Meter reading not found."));
+		if (!reading.isDeleted()) {
+			throw new ConflictException("Meter reading is not archived.");
+		}
+		if (meterReadingRepository.existsByReadingDateAndIdNot(reading.getReadingDate(), id)) {
+			throw new ConflictException("A reading for this date already exists.");
+		}
+		reading.setDeleted(false);
+		reading.setDeletedAt(null);
+		meterReadingRepository.save(reading);
+	}
+
+	@Transactional
+	public void permanentDelete(Long id) {
+		final MeterReading reading = meterReadingRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Meter reading not found."));
+		if (!reading.isDeleted()) {
+			throw new ConflictException("Meter reading must be archived before permanent deletion.");
+		}
 		meterReadingRepository.deleteById(id);
 	}
 
@@ -207,7 +278,8 @@ public class MeterReadingService {
 			variancePct,
 			flagged,
 			reading.getCreatedAt() != null ? reading.getCreatedAt().toString() : null,
-			reading.getModifiedAt() != null ? reading.getModifiedAt().toString() : null
+			reading.getModifiedAt() != null ? reading.getModifiedAt().toString() : null,
+			reading.getDeletedAt() != null ? reading.getDeletedAt().toString() : null
 		);
 	}
 

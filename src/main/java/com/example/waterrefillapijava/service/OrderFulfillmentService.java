@@ -72,6 +72,10 @@ public class OrderFulfillmentService {
 		final Order order = orderRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Order not found."));
 
+		if (order.isDeleted()) {
+			throw new NotFoundException("Order not found.");
+		}
+
 		final Set<OrderStatus> allowed = VALID_TRANSITIONS.getOrDefault(order.getOrderType(), Set.of());
 		if (!allowed.contains(newStatus)) {
 			throw FieldValidationException.builder()
@@ -107,6 +111,10 @@ public class OrderFulfillmentService {
 			final Integer bottlesReturned, final BigDecimal cashCollected) {
 		final Order order = orderRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Order not found."));
+
+		if (order.isDeleted()) {
+			throw new NotFoundException("Order not found.");
+		}
 
 		if (order.getOrderType() != OrderType.delivery) {
 			throw FieldValidationException.builder()

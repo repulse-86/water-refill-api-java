@@ -1,6 +1,7 @@
 package com.example.waterrefillapijava.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,40 +45,44 @@ public class OrderService {
 
 	@Transactional(readOnly = true)
 	public Page<Order> listAll(final Pageable pageable) {
-		return orderRepository.findAll(pageable);
+		return orderRepository.findByDeletedFalse(pageable);
 	}
 
 	@Transactional(readOnly = true)
 	public Page<Order> search(final String search, final OrderType orderType, final OrderStatus status,
 			final Pageable pageable) {
 		if (search != null && orderType != null && status != null) {
-			return orderRepository.findByOrderTypeAndStatusAndSearch(orderType, status, search, pageable);
+			return orderRepository.findByOrderTypeAndStatusAndSearchAndDeletedFalse(orderType, status, search, pageable);
 		}
 		if (search != null && orderType != null) {
-			return orderRepository.findByOrderTypeAndSearch(orderType, search, pageable);
+			return orderRepository.findByOrderTypeAndSearchAndDeletedFalse(orderType, search, pageable);
 		}
 		if (search != null && status != null) {
-			return orderRepository.findByStatusAndSearch(status, search, pageable);
+			return orderRepository.findByStatusAndSearchAndDeletedFalse(status, search, pageable);
 		}
 		if (orderType != null && status != null) {
-			return orderRepository.findByOrderTypeAndStatus(orderType, status, pageable);
+			return orderRepository.findByOrderTypeAndStatusAndDeletedFalse(orderType, status, pageable);
 		}
 		if (search != null) {
-			return orderRepository.findBySearch(search, pageable);
+			return orderRepository.findBySearchAndDeletedFalse(search, pageable);
 		}
 		if (orderType != null) {
-			return orderRepository.findByOrderType(orderType, pageable);
+			return orderRepository.findByOrderTypeAndDeletedFalse(orderType, pageable);
 		}
 		if (status != null) {
-			return orderRepository.findByStatus(status, pageable);
+			return orderRepository.findByStatusAndDeletedFalse(status, pageable);
 		}
-		return orderRepository.findAll(pageable);
+		return orderRepository.findByDeletedFalse(pageable);
 	}
 
 	@Transactional(readOnly = true)
 	public Order findById(final Long id) {
-		return orderRepository.findById(id)
+		final Order order = orderRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Order not found."));
+		if (order.isDeleted()) {
+			throw new NotFoundException("Order not found.");
+		}
+		return order;
 	}
 
 	@Transactional
@@ -235,15 +240,14 @@ public class OrderService {
 		@CacheEvict(value = "report:reconciliation", allEntries = true)
 	})
 	public void delete(final Long id) {
-		if (!orderRepository.existsById(id)) {
-			throw new NotFoundException("Order not found.");
+		final Order order = orderRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Order not found."));
+		if (order.isDeleted()) {
+			return;
 		}
-
-		final Order order = orderRepository.findById(id).orElseThrow();
-		stockEffectService.restoreStockForOrder(order);
-
-		orderItemRepository.findByOrderId(id).forEach(orderItemRepository::delete);
-		orderRepository.deleteById(id);
+		order.setDeleted(true);
+		order.setDeletedAt(LocalDateTime.now());
+		orderRepository.save(order);
 	}
 
 	public OrderResponse toResponse(final Order order) {
@@ -270,8 +274,74 @@ public class OrderService {
 			order.getCashCollectedAtDelivery(),
 			itemResponses,
 			order.getCreatedAt(),
-			order.getModifiedAt()
+			order.getModifiedAt(),
+			order.getDeletedAt() != null ? order.getDeletedAt().toString() : null
 		);
+	}
+
+	@Transactional(readOnly = true)
+	public Page<Order> archiveList(String search, OrderType orderType, OrderStatus status, Pageable pageable) {
+		if (search != null && orderType != null && status != null) {
+			return orderRepository.findByOrderTypeAndStatusAndSearchAndDeletedTrue(orderType, status, search, pageable);
+		}
+		if (search != null && orderType != null) {
+			return orderRepository.findByOrderTypeAndSearchAndDeletedTrue(orderType, search, pageable);
+		}
+		if (search != null && status != null) {
+			return orderRepository.findByStatusAndSearchAndDeletedTrue(status, search, pageable);
+		}
+		if (orderType != null && status != null) {
+			return orderRepository.findByOrderTypeAndStatusAndDeletedTrue(orderType, status, pageable);
+		}
+		if (search != null) {
+			return orderRepository.findBySearchAndDeletedTrue(search, pageable);
+		}
+		if (orderType != null) {
+			return orderRepository.findByOrderTypeAndDeletedTrue(orderType, pageable);
+		}
+		if (status != null) {
+			return orderRepository.findByStatusAndDeletedTrue(status, pageable);
+		}
+		return orderRepository.findByDeletedTrue(pageable);
+	}
+
+	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict(value = "report:daily-sales", allEntries = true),
+		@CacheEvict(value = "report:product-performance", allEntries = true),
+		@CacheEvict(value = "report:debt-aging", allEntries = true),
+		@CacheEvict(value = "report:reconciliation", allEntries = true)
+	})
+	public void restore(final Long id) {
+		final Order order = orderRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Order not found."));
+		if (!order.isDeleted()) {
+			throw new com.example.waterrefillapijava.exception.ConflictException("Order is not archived.");
+		}
+		order.setDeleted(false);
+		order.setDeletedAt(null);
+		orderRepository.save(order);
+	}
+
+	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict(value = "report:daily-sales", allEntries = true),
+		@CacheEvict(value = "report:product-performance", allEntries = true),
+		@CacheEvict(value = "report:debt-aging", allEntries = true),
+		@CacheEvict(value = "report:reconciliation", allEntries = true)
+	})
+	public void permanentDelete(final Long id) {
+		final Order order = orderRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Order not found."));
+		if (!order.isDeleted()) {
+			throw new com.example.waterrefillapijava.exception.ConflictException("Order must be archived before permanent deletion.");
+		}
+		// Reverse effects (Option B: reversal at permanent delete time)
+		stockEffectService.restoreStockForOrder(order);
+		orderItemRepository.findByOrderId(id).forEach(orderItemRepository::delete);
+		orderRepository.deleteById(id);
 	}
 
 	private OrderItemResponse toItemResponse(final OrderItem item) {

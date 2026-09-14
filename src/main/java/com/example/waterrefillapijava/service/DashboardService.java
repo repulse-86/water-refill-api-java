@@ -51,15 +51,15 @@ public class DashboardService {
 	public DashboardResponse getDashboard() {
 		final LocalDate today = LocalDate.now();
 
-		final List<Order> completedOrders = orderRepository.findByStatus(OrderStatus.completed, Pageable.unpaged()).getContent();
-		final List<Order> pendingOrdersList = orderRepository.findByStatusNotOrderByCreatedAtDesc(OrderStatus.completed);
+		final List<Order> completedOrders = orderRepository.findByStatusAndDeletedFalse(OrderStatus.completed, Pageable.unpaged()).getContent();
+		final List<Order> pendingOrdersList = orderRepository.findByStatusNotAndDeletedFalseOrderByCreatedAtDesc(OrderStatus.completed);
 		final List<Product> lowStockProducts = productRepository.findLowStock();
 		final List<Product> products = productRepository.findAll();
 		final List<MeterReading> readings = meterReadingRepository.findAll();
 
 		final TodaySummary todaySummary = computeTodaySales(completedOrders, today);
 		final int activeCustomerCount = (int) customerRepository.countBySubscriberStatus("active");
-		final int pendingOrderCount = (int) orderRepository.countByStatusNot(OrderStatus.completed);
+		final int pendingOrderCount = (int) orderRepository.countByStatusNotAndDeletedFalse(OrderStatus.completed);
 		final int bottlesReturned = orderRepository.sumBottlesReturned();
 		final QuickStats quickStats = computeQuickStats(readings, completedOrders, products, bottlesReturned, activeCustomerCount, pendingOrderCount, today);
 		final List<PendingOrder> pendingOrders = computePendingOrders(pendingOrdersList);

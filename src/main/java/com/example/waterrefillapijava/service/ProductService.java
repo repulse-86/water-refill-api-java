@@ -17,6 +17,7 @@ import com.example.waterrefillapijava.exception.NotFoundException;
 import com.example.waterrefillapijava.model.Product;
 import com.example.waterrefillapijava.model.ProductComponent;
 import com.example.waterrefillapijava.model.ProductType;
+import com.example.waterrefillapijava.repository.OrderItemRepository;
 import com.example.waterrefillapijava.repository.ProductComponentRepository;
 import com.example.waterrefillapijava.repository.ProductRepository;
 
@@ -28,30 +29,35 @@ public class ProductService {
 
 	private final ProductRepository productRepository;
 	private final ProductComponentRepository productComponentRepository;
+	private final OrderItemRepository orderItemRepository;
 
 	@Transactional(readOnly = true)
 	public Page<Product> listAll(Pageable pageable) {
-		return productRepository.findAll(pageable);
+		return productRepository.findByDeletedFalse(pageable);
 	}
 
 	@Transactional(readOnly = true)
 	public Page<Product> search(String search, ProductType type, Pageable pageable) {
 		if (search != null && type != null) {
-			return productRepository.findByNameContainingIgnoreCaseAndType(search, type, pageable);
+			return productRepository.findByNameContainingIgnoreCaseAndTypeAndDeletedFalse(search, type, pageable);
 		}
 		if (search != null) {
-			return productRepository.findByNameContainingIgnoreCase(search, pageable);
+			return productRepository.findByNameContainingIgnoreCaseAndDeletedFalse(search, pageable);
 		}
 		if (type != null) {
-			return productRepository.findByType(type, pageable);
+			return productRepository.findByTypeAndDeletedFalse(type, pageable);
 		}
-		return productRepository.findAll(pageable);
+		return productRepository.findByDeletedFalse(pageable);
 	}
 
 	@Transactional(readOnly = true)
 	public Product findById(Long id) {
-		return productRepository.findById(id)
+		final Product product = productRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Product not found."));
+		if (product.isDeleted()) {
+			throw new NotFoundException("Product not found.");
+		}
+		return product;
 	}
 
 	@Transactional
@@ -149,11 +155,61 @@ public class ProductService {
 		@CacheEvict("report:product-performance")
 	})
 	public void delete(Long id) {
-		if (!productRepository.existsById(id)) {
-			throw new NotFoundException("Product not found.");
+		final Product product = productRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Product not found."));
+		product.setDeleted(true);
+		product.setDeletedAt(java.time.LocalDateTime.now());
+		productRepository.save(product);
+	}
+
+	@Transactional(readOnly = true)
+	public Page<Product> archiveList(String search, ProductType type, Pageable pageable) {
+		if (search != null && type != null) {
+			return productRepository.findByNameContainingIgnoreCaseAndTypeAndDeletedTrue(search, type, pageable);
 		}
-		productComponentRepository.findByProductId(id, Pageable.unpaged()).forEach(productComponentRepository::delete);
+		if (search != null) {
+			return productRepository.findByNameContainingIgnoreCaseAndDeletedTrue(search, pageable);
+		}
+		if (type != null) {
+			return productRepository.findByTypeAndDeletedTrue(type, pageable);
+		}
+		return productRepository.findByDeletedTrue(pageable);
+	}
+
+	@Transactional
+	@Caching(evict = {
+		@CacheEvict("dashboard"),
+		@CacheEvict("report:product-performance")
+	})
+	public void restore(Long id) {
+		final Product product = productRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Product not found."));
+		if (!product.isDeleted()) {
+			throw new ConflictException("Product is not archived.");
+		}
+		if (productRepository.existsByNameIgnoreCaseAndIdNot(product.getName(), id)) {
+			throw new ConflictException("A product with this name already exists.");
+		}
+		product.setDeleted(false);
+		product.setDeletedAt(null);
+		productRepository.save(product);
+	}
+
+	@Transactional
+	public String permanentDelete(Long id) {
+		final Product product = productRepository.findById(id)
+			.orElseThrow(() -> new NotFoundException("Product not found."));
+		if (!product.isDeleted()) {
+			throw new ConflictException("Product must be archived before permanent deletion.");
+		}
+		if (orderItemRepository.existsByProductId(id)) {
+			throw new ConflictException("Cannot permanently delete: product is referenced by order history.");
+		}
+		final String imageUrl = product.getImage();
+		productComponentRepository.deleteByProductId(id);
+		productComponentRepository.deleteByComponentId(id);
 		productRepository.deleteById(id);
+		return imageUrl;
 	}
 
 	private void saveComponents(Product product, List<ComponentItem> components) {
