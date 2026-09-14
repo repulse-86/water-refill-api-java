@@ -165,7 +165,7 @@ public class OrderController {
 
 	private PageResponse<OrderResponse> toPageResponse(final Page<Order> page) {
 		return new PageResponse<>(
-			page.getContent().stream().map(orderService::toResponse).toList(),
+			orderService.toResponses(page.getContent()),
 			page.getNumber() + 1,
 			page.getSize(),
 			page.getTotalElements(),

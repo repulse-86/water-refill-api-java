@@ -47,7 +47,7 @@ class OrderFulfillmentServiceTest {
 	void advanceStatusWalkInQueuedToProcessingSucceeds() {
 		final Order order = Order.builder()
 			.id(1L).orderType(OrderType.walk_in).status(OrderStatus.queued).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 		when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
 		final Order result = fulfillmentService.advanceStatus(1L, OrderStatus.processing);
@@ -59,7 +59,7 @@ class OrderFulfillmentServiceTest {
 	void advanceStatusWalkInInvalidTransitionThrows() {
 		final Order order = Order.builder()
 			.id(1L).orderType(OrderType.walk_in).status(OrderStatus.queued).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		assertThrows(FieldValidationException.class,
 			() -> fulfillmentService.advanceStatus(1L, OrderStatus.transit));
@@ -69,7 +69,7 @@ class OrderFulfillmentServiceTest {
 	void advanceStatusDeliveryCompletedSetsDeliveredAt() {
 		final Order order = Order.builder()
 			.id(1L).orderType(OrderType.delivery).status(OrderStatus.transit).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 		when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 
 		final Order result = fulfillmentService.advanceStatus(1L, OrderStatus.completed);
@@ -81,7 +81,7 @@ class OrderFulfillmentServiceTest {
 
 	@Test
 	void advanceStatusNotFoundThrows() {
-		when(orderRepository.findById(999L)).thenReturn(Optional.empty());
+		when(orderRepository.findByIdWithDetails(999L)).thenReturn(null);
 
 		assertThrows(NotFoundException.class,
 			() -> fulfillmentService.advanceStatus(999L, OrderStatus.processing));
@@ -91,7 +91,7 @@ class OrderFulfillmentServiceTest {
 	void recordDeliveryOnlyForDeliveryOrdersThrows() {
 		final Order order = Order.builder()
 			.id(1L).orderType(OrderType.walk_in).status(OrderStatus.completed).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		assertThrows(FieldValidationException.class,
 			() -> fulfillmentService.recordDelivery(1L, DeliveryStatus.delivered, 2, BigDecimal.TEN));
@@ -103,7 +103,7 @@ class OrderFulfillmentServiceTest {
 		final Order order = Order.builder()
 			.id(1L).orderType(OrderType.delivery).status(OrderStatus.transit)
 			.customer(customer).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 		when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 		when(customerRepository.save(any(Customer.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -121,7 +121,7 @@ class OrderFulfillmentServiceTest {
 		final Order order = Order.builder()
 			.id(1L).orderType(OrderType.delivery).status(OrderStatus.transit)
 			.customer(customer).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 		when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
 		when(customerRepository.save(any(Customer.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -133,7 +133,7 @@ class OrderFulfillmentServiceTest {
 
 	@Test
 	void recordDeliveryNotFoundThrows() {
-		when(orderRepository.findById(999L)).thenReturn(Optional.empty());
+		when(orderRepository.findByIdWithDetails(999L)).thenReturn(null);
 
 		assertThrows(NotFoundException.class,
 			() -> fulfillmentService.recordDelivery(999L, DeliveryStatus.delivered, 0, BigDecimal.ZERO));
@@ -144,7 +144,7 @@ class OrderFulfillmentServiceTest {
 		final Order order = Order.builder()
 			.id(1L).orderType(OrderType.walk_in).status(OrderStatus.queued)
 			.deleted(true).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		assertThrows(NotFoundException.class,
 			() -> fulfillmentService.advanceStatus(1L, OrderStatus.processing));
@@ -155,7 +155,7 @@ class OrderFulfillmentServiceTest {
 		final Order order = Order.builder()
 			.id(1L).orderType(OrderType.delivery).status(OrderStatus.transit)
 			.deleted(true).build();
-		when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdWithDetails(1L)).thenReturn(order);
 
 		assertThrows(NotFoundException.class,
 			() -> fulfillmentService.recordDelivery(1L, DeliveryStatus.delivered, 0, BigDecimal.ZERO));
