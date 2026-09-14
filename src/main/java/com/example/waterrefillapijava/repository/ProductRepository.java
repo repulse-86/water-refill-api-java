@@ -29,7 +29,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
 	Page<Product> findByNameContainingIgnoreCaseAndType(String name, ProductType type, Pageable pageable);
 
-	@Query("SELECT p FROM Product p WHERE p.stockQuantity <= p.reorderPoint ORDER BY p.stockQuantity ASC")
+	@Query("SELECT p FROM Product p WHERE p.stockQuantity <= p.reorderPoint AND p.deleted = false ORDER BY p.stockQuantity ASC")
 	List<Product> findLowStock();
 
 	@Modifying
@@ -39,4 +39,22 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 	@Modifying
 	@Query("UPDATE Product p SET p.stockQuantity = p.stockQuantity + :qty WHERE p.id = :id")
 	void incrementStock(@Param("id") Long id, @Param("qty") int qty);
+
+	// User-facing (deleted = false)
+	Page<Product> findByDeletedFalse(Pageable pageable);
+
+	Page<Product> findByNameContainingIgnoreCaseAndDeletedFalse(String name, Pageable pageable);
+
+	Page<Product> findByTypeAndDeletedFalse(ProductType type, Pageable pageable);
+
+	Page<Product> findByNameContainingIgnoreCaseAndTypeAndDeletedFalse(String name, ProductType type, Pageable pageable);
+
+	// Archive (deleted = true)
+	Page<Product> findByDeletedTrue(Pageable pageable);
+
+	Page<Product> findByNameContainingIgnoreCaseAndDeletedTrue(String name, Pageable pageable);
+
+	Page<Product> findByTypeAndDeletedTrue(ProductType type, Pageable pageable);
+
+	Page<Product> findByNameContainingIgnoreCaseAndTypeAndDeletedTrue(String name, ProductType type, Pageable pageable);
 }

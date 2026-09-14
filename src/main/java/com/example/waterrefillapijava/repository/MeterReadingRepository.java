@@ -19,6 +19,16 @@ public interface MeterReadingRepository extends JpaRepository<MeterReading, Long
 
 	Optional<MeterReading> findTopByReadingDateBeforeOrderByReadingDateDesc(LocalDate readingDate);
 
-	@Query("SELECT m FROM MeterReading m WHERE CAST(m.readingDate AS string) LIKE %:search% OR m.notes LIKE %:search%")
+	@Query("SELECT m FROM MeterReading m WHERE m.deleted = false AND (CAST(m.readingDate AS string) LIKE %:search% OR m.notes LIKE %:search%)")
 	Page<MeterReading> findBySearch(@Param("search") String search, Pageable pageable);
+
+	Page<MeterReading> findByDeletedFalse(Pageable pageable);
+
+	@Query("SELECT m FROM MeterReading m WHERE m.deleted = false AND (CAST(m.readingDate AS string) LIKE %:search% OR m.notes LIKE %:search%)")
+	Page<MeterReading> findBySearchAndDeletedFalse(@Param("search") String search, Pageable pageable);
+
+	Page<MeterReading> findByDeletedTrue(Pageable pageable);
+
+	@Query("SELECT m FROM MeterReading m WHERE m.deleted = true AND (CAST(m.readingDate AS string) LIKE %:search% OR m.notes LIKE %:search%)")
+	Page<MeterReading> findBySearchAndDeletedTrue(@Param("search") String search, Pageable pageable);
 }

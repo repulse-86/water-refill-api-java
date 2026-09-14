@@ -5,6 +5,9 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.example.waterrefillapijava.model.ProductComponent;
@@ -21,4 +24,12 @@ public interface ProductComponentRepository extends JpaRepository<ProductCompone
 	boolean existsByProductIdAndComponentId(Long productId, Long componentId);
 
 	void deleteByProductIdAndComponentId(Long productId, Long componentId);
+
+	@Modifying
+	@Query("DELETE FROM ProductComponent pc WHERE pc.product.id = :productId")
+	void deleteByProductId(@Param("productId") Long productId);
+
+	@Modifying
+	@Query("DELETE FROM ProductComponent pc WHERE pc.component.id = :componentId")
+	void deleteByComponentId(@Param("componentId") Long componentId);
 }

@@ -41,4 +41,16 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 	@Modifying
 	@Query("UPDATE Customer c SET c.bottleDebt = c.bottleDebt - :qty WHERE c.id = :id")
 	void decrementBottleDebt(@Param("id") Long id, @Param("qty") int qty);
+
+	// User-facing (deleted = false)
+	Page<Customer> findByDeletedFalse(Pageable pageable);
+
+	Page<Customer> findByNameContainingIgnoreCaseAndDeletedFalse(String name, Pageable pageable);
+
+	long countBySubscriberStatusAndDeletedFalse(String subscriberStatus);
+
+	// Archive (deleted = true)
+	Page<Customer> findByDeletedTrue(Pageable pageable);
+
+	Page<Customer> findByNameContainingIgnoreCaseAndDeletedTrue(String name, Pageable pageable);
 }
